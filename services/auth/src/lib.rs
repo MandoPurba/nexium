@@ -25,11 +25,7 @@ use crate::middleware::JwtAuth;
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(routes::register)
         .service(routes::login)
-        .service(
-            web::scope("")
-                .wrap(JwtAuth)
-                .service(routes::me),
-        );
+        .service(web::scope("").wrap(JwtAuth).service(routes::me));
 }
 
 /// Bootstrap the auth-service process: load config, init telemetry, build
