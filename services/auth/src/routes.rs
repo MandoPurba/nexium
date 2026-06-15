@@ -8,8 +8,11 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::error::ApiError;
+use crate::jwt::JwtIssuer;
 use crate::password;
 use crate::repository::{self, NewUser, RepoError};
+
+// ---- POST /auth/register --------------------------------------------------
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct RegisterRequest {
@@ -64,5 +67,79 @@ pub async fn register(
         email: user.email,
         status: user.status,
         created_at: user.created_at,
+    }))
+}
+
+// ---- POST /auth/login -----------------------------------------------------
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct LoginRequest {
+    #[validate(email)]
+    pub email: String,
+
+    // No min length here — we accept whatever the user typed and rely on
+    // the verify step to reject. Cap at 256 to prevent argon2 DoS.
+    #[validate(length(min = 1, max = 256))]
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub access_token: String,
+    pub token_type: &'static str,
+    pub expires_in: i64,
+}
+
+#[post("/auth/login")]
+#[tracing::instrument(name = "auth.login", skip_all, fields(email = %body.email))]
+pub async fn login(
+    pool: web::Data<PgPool>,
+    issuer: web::Data<JwtIssuer>,
+    body: web::Json<LoginRequest>,
+) -> Result<HttpResponse, ApiError> {
+    let body = body.into_inner();
+    body.validate()?;
+
+    let email = body.email.trim().to_lowercase();
+    let password = body.password;
+
+    let user_opt = repository::find_by_email(pool.get_ref(), &email)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    // Verify in web::block (CPU-bound). When the user doesn't exist we still
+    // run argon2 against a dummy hash so an attacker can't tell unknown email
+    // from wrong password by timing.
+    let (valid, user_id) = web::block(
+        move || -> Result<(bool, Option<Uuid>), argon2::password_hash::Error> {
+            match user_opt {
+                Some(u) => Ok((password::verify(&password, &u.password_hash)?, Some(u.id))),
+                None => {
+                    let _ = password::verify(&password, password::dummy_hash())?;
+                    Ok((false, None))
+                }
+            }
+        },
+    )
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::anyhow!("verify join error: {e}")))?
+    .map_err(|e| ApiError::Internal(anyhow::anyhow!("argon2 verify failed: {e}")))?;
+
+    if !valid {
+        tracing::info!(%email, "login rejected");
+        return Err(ApiError::Unauthorized);
+    }
+    let user_id = user_id.expect("valid implies user found");
+
+    let (token, expires_in) = issuer
+        .issue(user_id)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("jwt encode failed: {e}")))?;
+
+    tracing::info!(user_id = %user_id, "login succeeded");
+
+    Ok(HttpResponse::Ok().json(LoginResponse {
+        access_token: token,
+        token_type: "Bearer",
+        expires_in,
     }))
 }

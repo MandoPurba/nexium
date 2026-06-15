@@ -17,6 +17,9 @@ pub enum ApiError {
     #[error("{0}")]
     Conflict(String),
 
+    #[error("invalid credentials")]
+    Unauthorized,
+
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -26,6 +29,7 @@ impl ApiError {
         match self {
             Self::Validation(_) => "VALIDATION_ERROR",
             Self::Conflict(_) => "CONFLICT",
+            Self::Unauthorized => "UNAUTHORIZED",
             Self::Internal(_) => "INTERNAL_ERROR",
         }
     }
@@ -34,6 +38,7 @@ impl ApiError {
         match self {
             Self::Validation(_) => "request validation failed".to_string(),
             Self::Conflict(m) => m.clone(),
+            Self::Unauthorized => "invalid credentials".to_string(),
             Self::Internal(_) => "internal server error".to_string(),
         }
     }
@@ -51,6 +56,7 @@ impl ResponseError for ApiError {
         match self {
             Self::Validation(_) => StatusCode::BAD_REQUEST,
             Self::Conflict(_) => StatusCode::CONFLICT,
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

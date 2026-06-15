@@ -18,8 +18,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Romando Purba <romando.purba125@gmail.com>"]
-license = "MIT"
-repository = "https://github.com/username/nexium"
+repository = "https://github.com/MandoPurba/nexium"
 
 [workspace.dependencies]
 # Internal crates
@@ -71,6 +70,7 @@ sqlx = { version = "0.8", features = [
 
 # Auth
 argon2 = "0.5"
+jsonwebtoken = "9"
 
 # Validation
 validator = { version = "0.18", features = ["derive"] }

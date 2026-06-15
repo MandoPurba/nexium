@@ -14,6 +14,7 @@ pub struct NewUser<'a> {
 pub struct UserRecord {
     pub id: Uuid,
     pub email: String,
+    pub password_hash: String,
     pub status: String,
     pub created_at: DateTime<Utc>,
 }
@@ -35,7 +36,7 @@ pub async fn insert_user(pool: &PgPool, new: NewUser<'_>) -> Result<UserRecord, 
         r#"
         INSERT INTO auth.users (email, password_hash)
         VALUES ($1, $2)
-        RETURNING id, email, status::text AS status, created_at
+        RETURNING id, email, password_hash, status::text AS status, created_at
         "#,
     )
     .bind(new.email)
@@ -50,4 +51,17 @@ pub async fn insert_user(pool: &PgPool, new: NewUser<'_>) -> Result<UserRecord, 
     })?;
 
     Ok(row)
+}
+
+pub async fn find_by_email(pool: &PgPool, email: &str) -> Result<Option<UserRecord>, sqlx::Error> {
+    sqlx::query_as::<_, UserRecord>(
+        r#"
+        SELECT id, email, password_hash, status::text AS status, created_at
+        FROM auth.users
+        WHERE email = $1
+        "#,
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
 }

@@ -9,6 +9,7 @@ use argon2::password_hash::{
     PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng,
 };
 use argon2::{Argon2, password_hash::Error as Argon2Error};
+use std::sync::OnceLock;
 
 /// Hash `password` and return its PHC-formatted string.
 pub fn hash(password: &str) -> Result<String, Argon2Error> {
@@ -21,7 +22,6 @@ pub fn hash(password: &str) -> Result<String, Argon2Error> {
 /// Verify `password` against a PHC-formatted hash.
 ///
 /// Returns `Ok(true)` on match, `Ok(false)` on mismatch, `Err` on malformed hash.
-#[allow(dead_code)]
 pub fn verify(password: &str, phc: &str) -> Result<bool, Argon2Error> {
     let parsed = PasswordHash::new(phc)?;
     match Argon2::default().verify_password(password.as_bytes(), &parsed) {
@@ -29,6 +29,15 @@ pub fn verify(password: &str, phc: &str) -> Result<bool, Argon2Error> {
         Err(Argon2Error::Password) => Ok(false),
         Err(e) => Err(e),
     }
+}
+
+/// A precomputed PHC hash used to keep login response time roughly constant
+/// when the email isn't registered — prevents user enumeration via timing.
+pub fn dummy_hash() -> &'static str {
+    static DUMMY: OnceLock<String> = OnceLock::new();
+    DUMMY.get_or_init(|| {
+        hash("nexium-timing-defense-throwaway").expect("dummy hash generation must not fail")
+    })
 }
 
 #[cfg(test)]
@@ -53,5 +62,12 @@ mod tests {
         let a = hash("samepass").unwrap();
         let b = hash("samepass").unwrap();
         assert_ne!(a, b, "salt must differ across hashes");
+    }
+
+    #[test]
+    fn dummy_hash_is_verifiable_phc() {
+        let d = dummy_hash();
+        assert!(d.starts_with("$argon2id$"));
+        assert!(!verify("any-attacker-input", d).unwrap());
     }
 }

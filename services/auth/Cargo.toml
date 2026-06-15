@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-license.workspace = true
 repository.workspace = true
 description = "Auth service — registration, login, JWT issuance."
 
@@ -26,4 +25,5 @@ uuid = { workspace = true }
 actix-web = { workspace = true }
 sqlx = { workspace = true }
 argon2 = "0.5"
+jsonwebtoken = { workspace = true }
 validator = { workspace = true }

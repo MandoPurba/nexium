@@ -4,7 +4,6 @@
 
 [![CI](https://github.com/MandoPurba/nexium/actions/workflows/ci.yml/badge.svg)](https://github.com/MandoPurba/nexium/actions/workflows/ci.yml)
 ![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)
-![License](https://img.shields.io/badge/license-MIT-blue)
 
 A microservice-lite exchange backend built as a portfolio + learning project. Independent service binaries share a small set of library crates and a layered configuration model. Communication is HTTP today; NATS and Kafka land in later sprints.
 
@@ -123,7 +122,3 @@ Every error response uses one envelope:
 Codes: `VALIDATION_ERROR` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `INSUFFICIENT_BALANCE` (422), `PAIR_INACTIVE` (422), `INTERNAL_ERROR` (500).
 
 Full API surface is implemented sprint-by-sprint per the table above.
-
-## License
-
-MIT
