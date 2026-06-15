@@ -1,0 +1,16 @@
+[package]
+name = "nexium-matching-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust limit-order-book matching engine (price-time priority)."
+
+[dependencies]
+nexium-core = { workspace = true }
+rust_decimal = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }

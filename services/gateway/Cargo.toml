@@ -1,0 +1,17 @@
+[package]
+name = "gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "API + WebSocket gateway — request routing, auth, rate limiting, realtime feeds."
+
+[dependencies]
+nexium-core = { workspace = true }
+nexium-config = { workspace = true }
+nexium-telemetry = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }

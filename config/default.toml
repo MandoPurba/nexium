@@ -1,0 +1,32 @@
+# Nexium default configuration. Per-environment overrides go in
+# `config/{environment}.toml`; env vars (NEXIUM__SECTION__FIELD) win over both.
+
+environment = "local"
+
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[database]
+url = "postgres://nexium:nexium@localhost:5432/nexium"
+max_connections = 10
+min_connections = 1
+acquire_timeout_secs = 5
+
+[timescale]
+url = "postgres://nexium:nexium@localhost:5433/nexium_market"
+max_connections = 5
+min_connections = 1
+acquire_timeout_secs = 5
+
+[redis]
+url = "redis://localhost:6379"
+pool_size = 16
+
+[telemetry]
+log_level = "info"
+service_name = "nexium"
+
+[auth]
+jwt_secret = "change-me-please"
+jwt_expiry_secs = 3600

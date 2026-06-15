@@ -1,0 +1,15 @@
+[package]
+name = "nexium-telemetry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tracing and OpenTelemetry initialization for Nexium services."
+
+[dependencies]
+nexium-config = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }

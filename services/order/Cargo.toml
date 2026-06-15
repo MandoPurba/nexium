@@ -1,0 +1,19 @@
+[package]
+name = "order-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Order service — placement, cancellation, status."
+
+[dependencies]
+nexium-core = { workspace = true }
+nexium-config = { workspace = true }
+nexium-telemetry = { workspace = true }
+nexium-db = { workspace = true }
+nexium-matching-engine = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
