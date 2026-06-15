@@ -1,6 +1,6 @@
 //! HTTP handlers for the auth service.
 
-use actix_web::{HttpResponse, post, web};
+use actix_web::{HttpResponse, get, post, web};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -8,6 +8,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::error::ApiError;
+use crate::extractors::AuthUser;
 use crate::jwt::JwtIssuer;
 use crate::password;
 use crate::repository::{self, NewUser, RepoError};
@@ -141,5 +142,60 @@ pub async fn login(
         access_token: token,
         token_type: "Bearer",
         expires_in,
+    }))
+}
+
+// ---- GET /auth/me ---------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct MeResponse {
+    pub id: Uuid,
+    pub email: String,
+    pub status: String,
+    pub kyc_level: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct MeRow {
+    id: Uuid,
+    email: String,
+    status: String,
+    kyc_level: String,
+}
+
+#[get("/auth/me")]
+#[tracing::instrument(name = "auth.me", skip_all, fields(user_id = %user.id))]
+pub async fn me(pool: web::Data<PgPool>, user: AuthUser) -> Result<HttpResponse, ApiError> {
+    let row = sqlx::query_as::<_, MeRow>(
+        r#"
+        SELECT
+            u.id,
+            u.email,
+            u.status::text AS status,
+            COALESCE(
+                (
+                    SELECT k.level::text
+                    FROM auth.kyc k
+                    WHERE k.user_id = u.id
+                    ORDER BY k.created_at DESC
+                    LIMIT 1
+                ),
+                'none'
+            ) AS kyc_level
+        FROM auth.users u
+        WHERE u.id = $1
+        "#,
+    )
+    .bind(user.id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?
+    .ok_or(ApiError::Unauthorized)?;
+
+    Ok(HttpResponse::Ok().json(MeResponse {
+        id: row.id,
+        email: row.email,
+        status: row.status,
+        kyc_level: row.kyc_level,
     }))
 }
