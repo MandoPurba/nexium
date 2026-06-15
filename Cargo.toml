@@ -57,6 +57,24 @@ uuid = { version = "1", features = ["v4", "serde"] }
 config = "0.14"
 dotenvy = "0.15"
 
+# Web
+actix-web = "4"
+
+# Database
+sqlx = { version = "0.8", features = [
+    "postgres",
+    "runtime-tokio",
+    "uuid",
+    "chrono",
+    "rust_decimal",
+] }
+
+# Auth
+argon2 = "0.5"
+
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
