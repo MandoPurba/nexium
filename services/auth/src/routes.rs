@@ -7,9 +7,10 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::error::ApiError;
-use crate::extractors::AuthUser;
-use crate::jwt::JwtIssuer;
+use nexium_core::error::ApiError;
+use nexium_core::extractors::AuthUser;
+use nexium_core::jwt::JwtIssuer;
+
 use crate::password;
 use crate::repository::{self, NewUser, RepoError};
 
@@ -60,6 +61,12 @@ pub async fn register(
         RepoError::DuplicateEmail => ApiError::Conflict("email already registered".into()),
         RepoError::Sqlx(err) => ApiError::Internal(err.into()),
     })?;
+
+    // Direct fn call into wallet-service for now; becomes a NATS event once
+    // messaging lands (Sprint 5+).
+    wallet_service::repository::create_default_wallets(pool.get_ref(), user.id)
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
 
     tracing::info!(user_id = %user.id, "user registered");
 

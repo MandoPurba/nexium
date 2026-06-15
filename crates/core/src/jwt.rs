@@ -51,7 +51,6 @@ impl JwtIssuer {
     }
 
     /// Decode and validate a token (signature, expiry, issuer).
-    #[allow(dead_code)] // used by /auth/me in the next task
     pub fn verify(&self, token: &str) -> Result<Claims, JwtError> {
         Ok(decode::<Claims>(token, &self.decoding_key, &self.validation)?.claims)
     }

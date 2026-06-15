@@ -12,6 +12,7 @@ nexium-core = { workspace = true }
 nexium-config = { workspace = true }
 nexium-telemetry = { workspace = true }
 nexium-db = { workspace = true }
+wallet-service = { path = "../wallet" }
 
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -25,5 +26,4 @@ uuid = { workspace = true }
 actix-web = { workspace = true }
 sqlx = { workspace = true }
 argon2 = "0.5"
-jsonwebtoken = { workspace = true }
 validator = { workspace = true }

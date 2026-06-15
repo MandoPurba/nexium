@@ -311,7 +311,6 @@ dependencies = [
  "anyhow",
  "argon2",
  "chrono",
- "jsonwebtoken",
  "nexium-config",
  "nexium-core",
  "nexium-db",
@@ -324,6 +323,7 @@ dependencies = [
  "tracing",
  "uuid",
  "validator",
+ "wallet-service",
 ]
 
 [[package]]
@@ -1561,11 +1561,17 @@ dependencies = [
 name = "nexium-core"
 version = "0.1.0"
 dependencies = [
+ "actix-web",
+ "anyhow",
  "chrono",
+ "jsonwebtoken",
  "rust_decimal",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
+ "tracing",
  "uuid",
+ "validator",
 ]
 
 [[package]]
@@ -3164,13 +3170,22 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "wallet-service"
 version = "0.1.0"
 dependencies = [
+ "actix-web",
  "anyhow",
+ "chrono",
  "nexium-config",
  "nexium-core",
  "nexium-db",
  "nexium-telemetry",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "uuid",
+ "validator",
 ]
 
 [[package]]

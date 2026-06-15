@@ -9,9 +9,11 @@ use actix_web::{
     test::{TestRequest, call_service, init_service, read_body_json},
     web,
 };
-use auth_service::{configure, jwt::JwtIssuer};
+use auth_service::configure;
+use nexium_core::jwt::JwtIssuer;
 use serde_json::{Value, json};
 use sqlx::PgPool;
+use uuid::Uuid;
 
 const TEST_SECRET: &str = "integration-test-secret-not-used-in-prod";
 const TEST_EXPIRY_SECS: u64 = 3600;
@@ -249,4 +251,37 @@ async fn invalid_email_format_returns_400(pool: PgPool) {
     let body: Value = read_body_json(resp).await;
     assert_eq!(body["code"], "VALIDATION_ERROR");
     assert!(body["details"].is_object(), "expected per-field details");
+}
+
+#[sqlx::test(migrations = "../../migrations/postgres")]
+async fn register_creates_default_wallets(pool: PgPool) {
+    let app = init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(issuer()))
+            .configure(configure),
+    )
+    .await;
+
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri("/auth/register")
+            .set_json(json!({"email": "wallets@example.com", "password": "strongpassword123"}))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), 201);
+    let body: Value = read_body_json(resp).await;
+    let user_id: Uuid = body["id"].as_str().unwrap().parse().unwrap();
+
+    let wallets = wallet_service::repository::find_by_user(&pool, user_id)
+        .await
+        .unwrap();
+    let currencies: Vec<&str> = wallets.iter().map(|w| w.currency.as_str()).collect();
+    assert_eq!(currencies, vec!["BTC", "ETH", "USDT"]);
+    for wallet in &wallets {
+        assert!(wallet.balance.is_zero());
+        assert!(wallet.locked_balance.is_zero());
+    }
 }

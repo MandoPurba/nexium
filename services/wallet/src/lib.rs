@@ -1,9 +1,8 @@
-//! Auth service — library entry point.
+//! Wallet service — library entry point.
 //!
 //! The binary (`src/main.rs`) is a thin wrapper around [`run`]. Tests import
 //! [`configure`] to mount the same routes on an in-process Actix `App`.
 
-pub mod password;
 pub mod repository;
 pub mod routes;
 
@@ -12,18 +11,20 @@ use nexium_config::AppConfig;
 use nexium_core::jwt::JwtIssuer;
 use nexium_core::middleware::JwtAuth;
 
-/// Mount every auth route on `cfg`.
-///
-/// Public routes (`/auth/register`, `/auth/login`) sit at the top level.
-/// Protected routes (`/auth/me`) live inside a scope wrapped with
-/// [`JwtAuth`], which pulls the [`JwtIssuer`] from `app_data`.
+/// Mount every wallet route on `cfg`. All routes are protected — the whole
+/// scope is wrapped with [`JwtAuth`], which pulls the [`JwtIssuer`] from
+/// `app_data`.
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(routes::register)
-        .service(routes::login)
-        .service(web::scope("").wrap(JwtAuth).service(routes::me));
+    cfg.service(
+        web::scope("")
+            .wrap(JwtAuth)
+            .service(routes::list_wallets)
+            .service(routes::get_wallet)
+            .service(routes::deposit),
+    );
 }
 
-/// Bootstrap the auth-service process: load config, init telemetry, build
+/// Bootstrap the wallet-service process: load config, init telemetry, build
 /// the DB pool, construct the JWT issuer, and serve until shutdown.
 pub async fn run() -> anyhow::Result<()> {
     let cfg = AppConfig::load(env!("CARGO_PKG_NAME"))?;
@@ -39,7 +40,7 @@ pub async fn run() -> anyhow::Result<()> {
         version = env!("CARGO_PKG_VERSION"),
         %host,
         port,
-        "auth-service listening"
+        "wallet-service listening"
     );
 
     HttpServer::new(move || {

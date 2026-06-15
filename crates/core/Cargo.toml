@@ -9,7 +9,14 @@ description = "Shared domain types, errors, and primitives for Nexium."
 
 [dependencies]
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+anyhow = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }
 uuid = { workspace = true }
+tracing = { workspace = true }
+validator = { workspace = true }
+
+actix-web = { workspace = true }
+jsonwebtoken = { workspace = true }
