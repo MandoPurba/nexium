@@ -12,6 +12,7 @@ nexium-core = { workspace = true }
 nexium-config = { workspace = true }
 nexium-telemetry = { workspace = true }
 nexium-db = { workspace = true }
+nexium-matching-engine = { workspace = true }
 wallet-service = { path = "../wallet" }
 tokio = { workspace = true }
 tracing = { workspace = true }

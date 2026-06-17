@@ -8,8 +8,9 @@ repository.workspace = true
 description = "Pure-Rust limit-order-book matching engine (price-time priority)."
 
 [dependencies]
-nexium-core = { workspace = true }
 rust_decimal = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
