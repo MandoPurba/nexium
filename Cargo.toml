@@ -36,7 +36,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Error handling
-thiserror = "1"
+thiserror = "2.0.18"
 anyhow = "1"
 
 # Logging & tracing
@@ -53,14 +53,14 @@ rust_decimal = { version = "1", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Configuration
-config = "0.14"
+config = "0.15.24"
 dotenvy = "0.15"
 
 # Web
-actix-web = "4"
+actix-web = "4.13.0"
 
 # Database
-sqlx = { version = "0.8", features = [
+sqlx = { version = "0.9.0", features = [
     "postgres",
     "runtime-tokio",
     "uuid",
@@ -71,10 +71,11 @@ sqlx = { version = "0.8", features = [
 
 # Auth
 argon2 = "0.5"
-jsonwebtoken = "9"
+jsonwebtoken = "10.4.0"
 
 # Validation
-validator = { version = "0.18", features = ["derive"] }
+validator = { version = "0.20.0", features = ["derive"] }
+rand = { version = "0.8", features = ["std"] }
 
 [profile.release]
 lto = "thin"

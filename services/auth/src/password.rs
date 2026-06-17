@@ -4,9 +4,8 @@
 //! self-describing — verification needs only the stored hash plus the candidate
 //! password. We use [`Argon2::default()`], which is Argon2id with the crate's
 //! recommended params (currently m=19456 KiB, t=2, p=1).
-
-use argon2::password_hash::{
-    PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng,
+use rand::rngs::OsRng;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
 };
 use argon2::{Argon2, password_hash::Error as Argon2Error};
 use std::sync::OnceLock;
