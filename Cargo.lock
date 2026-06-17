@@ -1682,13 +1682,21 @@ checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 name = "market-data-service"
 version = "0.1.0"
 dependencies = [
+ "actix-web",
  "anyhow",
+ "chrono",
  "nexium-config",
  "nexium-core",
  "nexium-db",
  "nexium-telemetry",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sqlx",
  "tokio",
  "tracing",
+ "uuid",
+ "validator",
 ]
 
 [[package]]

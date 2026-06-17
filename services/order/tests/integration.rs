@@ -25,11 +25,8 @@ fn issuer() -> JwtIssuer {
     JwtIssuer::new(TEST_SECRET, TEST_EXPIRY_SECS)
 }
 
-/// Spawn the engine + settlement tasks and return the sender for app_data.
-/// Tests that don't actually fill orders never observe the settlement task —
-/// it just sits idle on its event channel.
 fn engine_handle(pool: &PgPool) -> EngineSender {
-    spawn_engine(pool.clone())
+    spawn_engine(pool.clone(), None)
 }
 
 /// Convenience macro — builds the full `init_service` test app with engine

@@ -17,4 +17,4 @@ pub mod types;
 
 pub use engine::{Engine, EngineCommand, EngineEvent};
 pub use orderbook::OrderBook;
-pub use types::{Order, OrderType, Side, Trade};
+pub use types::{Order, OrderBookSnapshot, OrderType, Side, Trade};

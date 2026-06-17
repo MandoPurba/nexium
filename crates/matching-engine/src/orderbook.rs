@@ -10,7 +10,7 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
-use crate::types::{Order, OrderType, Side, Trade};
+use crate::types::{Order, OrderBookSnapshot, OrderType, Side, Trade};
 
 #[derive(Debug)]
 pub struct OrderBook {
@@ -38,6 +38,29 @@ impl OrderBook {
     /// Best ask (lowest sell price), or `None` if no asks.
     pub fn best_ask(&self) -> Option<Decimal> {
         self.asks.keys().next().copied()
+    }
+
+    /// Return a snapshot of the current book state — aggregated quantity per
+    /// price level, bids sorted highest-first, asks sorted lowest-first.
+    pub fn snapshot(&self) -> OrderBookSnapshot {
+        let bids: Vec<(Decimal, Decimal)> = self
+            .bids
+            .iter()
+            .rev()
+            .map(|(price, queue)| (*price, queue.iter().map(|o| o.remaining()).sum()))
+            .collect();
+
+        let asks: Vec<(Decimal, Decimal)> = self
+            .asks
+            .iter()
+            .map(|(price, queue)| (*price, queue.iter().map(|o| o.remaining()).sum()))
+            .collect();
+
+        OrderBookSnapshot {
+            pair: self.pair.clone(),
+            bids,
+            asks,
+        }
     }
 
     /// Match `incoming` against the opposite side of the book and return the
