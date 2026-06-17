@@ -71,7 +71,7 @@ sqlx = { version = "0.9.0", features = [
 
 # Auth
 argon2 = "0.5"
-jsonwebtoken = "10.4.0"
+jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
 
 # Validation
 validator = { version = "0.20.0", features = ["derive"] }

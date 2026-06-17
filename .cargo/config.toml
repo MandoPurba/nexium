@@ -1,0 +1,5 @@
+[env]
+# sqlx::test creates temporary Postgres databases for each test; running them
+# in parallel races on the _sqlx_test schema. Serialize to avoid the duplicate-
+# key panic. Override with RUST_TEST_THREADS=N if needed.
+RUST_TEST_THREADS = { value = "1", force = false }
