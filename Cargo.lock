@@ -1786,8 +1786,9 @@ name = "nexium-matching-engine"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "nexium-core",
  "rust_decimal",
+ "serde",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -1889,6 +1890,7 @@ dependencies = [
  "nexium-config",
  "nexium-core",
  "nexium-db",
+ "nexium-matching-engine",
  "nexium-telemetry",
  "rust_decimal",
  "serde",

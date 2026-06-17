@@ -10,7 +10,11 @@ use validator::{Validate, ValidationError};
 
 use nexium_core::error::ApiError;
 use nexium_core::extractors::AuthUser;
+use nexium_matching_engine::{
+    EngineCommand, Order as EngineOrder, OrderType as EngineOrderType, Side as EngineSide,
+};
 
+use crate::EngineSender;
 use crate::repository::{self, OrderFilter, OrderRecord};
 
 // ---------------------------------------------------------------------------
@@ -139,6 +143,7 @@ pub struct PlaceOrderResponse {
 #[tracing::instrument(name = "order.place", skip_all, fields(user_id = %user.id))]
 pub async fn place_order(
     pool: web::Data<PgPool>,
+    engine: web::Data<EngineSender>,
     user: AuthUser,
     body: web::Json<PlaceOrderRequest>,
 ) -> Result<HttpResponse, ApiError> {
@@ -231,6 +236,31 @@ pub async fn place_order(
     .await
     .map_err(|e| ApiError::Internal(e.into()))?;
 
+    // Feed the matching engine. Errors here are operational (channel closed
+    // because the engine task died) — we return 500 since the order is in the
+    // DB but won't be matched.
+    let engine_order = EngineOrder {
+        id: order.id,
+        user_id: order.user_id,
+        pair: order.pair.clone(),
+        side: match body.side {
+            OrderSide::Buy => EngineSide::Buy,
+            OrderSide::Sell => EngineSide::Sell,
+        },
+        order_type: match body.order_type {
+            OrderType::Limit => EngineOrderType::Limit,
+            OrderType::Market => EngineOrderType::Market,
+        },
+        price: body.price,
+        quantity: body.quantity,
+        filled_qty: rust_decimal::Decimal::ZERO,
+        created_at: order.created_at,
+    };
+    engine
+        .send(EngineCommand::PlaceOrder(engine_order))
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("engine channel closed: {e}")))?;
+
     tracing::info!(order_id = %order.id, pair = %pair_symbol, side = %side_str, "order placed");
 
     Ok(HttpResponse::Created().json(PlaceOrderResponse {
@@ -314,6 +344,7 @@ pub struct CancelOrderResponse {
 #[tracing::instrument(name = "order.cancel", skip_all, fields(user_id = %user.id, order_id = %path))]
 pub async fn cancel_order(
     pool: web::Data<PgPool>,
+    engine: web::Data<EngineSender>,
     user: AuthUser,
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, ApiError> {
@@ -327,6 +358,15 @@ pub async fn cancel_order(
                 "order '{order_id}' not found or cannot be cancelled"
             ))
         })?;
+
+    // Tell the engine to remove the resting order from its book. Errors are
+    // operational, not user-facing.
+    let _ = engine
+        .send(EngineCommand::CancelOrder {
+            order_id: order.id,
+            pair: order.pair.clone(),
+        })
+        .await;
 
     // Unlock the balance that was locked when the order was placed.
     // For partially_filled orders only the remaining (unfilled) portion was still locked.
