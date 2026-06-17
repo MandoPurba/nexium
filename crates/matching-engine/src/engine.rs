@@ -26,14 +26,15 @@ pub enum EngineCommand {
 
 #[derive(Debug, Clone)]
 pub enum EngineEvent {
-    /// Emitted after a `PlaceOrder` is processed — includes the taker's final
-    /// fill state along with each trade that resulted (possibly empty).
-    OrderProcessed { taker: Order, trades: Vec<Trade> },
-    /// Emitted after a `CancelOrder` — `Some(order)` when removed, `None` if
-    /// the order wasn't in the book.
+    OrderProcessed {
+        taker: Order,
+        trades: Vec<Trade>,
+        book_snapshot: OrderBookSnapshot,
+    },
     OrderCancelled {
         order_id: Uuid,
         removed: Option<Order>,
+        book_snapshot: OrderBookSnapshot,
     },
 }
 
@@ -84,17 +85,25 @@ impl Engine {
                             taker_view.filled_qty += t.quantity;
                         }
                     }
+                    let snapshot = book.snapshot();
                     let _ = event_tx
                         .send(EngineEvent::OrderProcessed {
                             taker: taker_view,
                             trades,
+                            book_snapshot: snapshot,
                         })
                         .await;
                 }
                 EngineCommand::CancelOrder { order_id, pair } => {
-                    let removed = self.book_for(&pair).cancel(order_id);
+                    let book = self.book_for(&pair);
+                    let removed = book.cancel(order_id);
+                    let snapshot = book.snapshot();
                     let _ = event_tx
-                        .send(EngineEvent::OrderCancelled { order_id, removed })
+                        .send(EngineEvent::OrderCancelled {
+                            order_id,
+                            removed,
+                            book_snapshot: snapshot,
+                        })
                         .await;
                 }
                 EngineCommand::GetOrderBook { pair, reply } => {
@@ -183,10 +192,16 @@ mod tests {
         // Second event: Bob's buy fully matches.
         let evt = evt_rx.recv().await.unwrap();
         match evt {
-            EngineEvent::OrderProcessed { taker, trades } => {
+            EngineEvent::OrderProcessed {
+                taker,
+                trades,
+                book_snapshot,
+            } => {
                 assert_eq!(trades.len(), 1);
                 assert_eq!(trades[0].quantity, Decimal::from(1));
                 assert_eq!(taker.filled_qty, Decimal::from(1));
+                assert!(book_snapshot.bids.is_empty());
+                assert!(book_snapshot.asks.is_empty());
             }
             _ => panic!("expected OrderProcessed"),
         }

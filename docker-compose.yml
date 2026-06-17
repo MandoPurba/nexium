@@ -37,6 +37,22 @@ services:
       timeout: 5s
       retries: 10
 
+  nats:
+    image: nats:2-alpine
+    container_name: nexium-nats
+    restart: unless-stopped
+    command: ["--jetstream", "--store_dir", "/data"]
+    ports:
+      - "${NATS_PORT:-4222}:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "nats-server", "--signal", "ldm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: nexium-redis
@@ -55,4 +71,5 @@ services:
 volumes:
   postgres_data:
   timescaledb_data:
+  nats_data:
   redis_data:
