@@ -26,6 +26,7 @@ pub struct AppConfig {
     pub server: ServerConfig,
     pub database: DatabaseConfig,
     pub timescale: TimescaleConfig,
+    pub nats: NatsConfig,
     pub redis: RedisConfig,
     pub telemetry: TelemetryConfig,
     pub auth: AuthConfig,
@@ -51,6 +52,11 @@ pub struct TimescaleConfig {
     pub max_connections: u32,
     pub min_connections: u32,
     pub acquire_timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NatsConfig {
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -154,6 +160,7 @@ impl<T> fmt::Debug for Secret<T> {
 const STANDARD_ENV_VARS: &[(&str, &str)] = &[
     ("DATABASE_URL", "database.url"),
     ("TIMESCALE_URL", "timescale.url"),
+    ("NATS_URL", "nats.url"),
     ("REDIS_URL", "redis.url"),
     ("JWT_SECRET", "auth.jwt_secret"),
 ];

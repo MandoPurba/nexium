@@ -26,7 +26,7 @@ fn issuer() -> JwtIssuer {
 }
 
 fn engine_handle(pool: &PgPool) -> EngineSender {
-    spawn_engine(pool.clone(), None)
+    spawn_engine(pool.clone(), None, None)
 }
 
 /// Convenience macro — builds the full `init_service` test app with engine

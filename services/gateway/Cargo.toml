@@ -14,3 +14,12 @@ nexium-telemetry = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+actix-web = { workspace = true }
+actix-ws = { workspace = true }
+async-nats = { workspace = true }
+futures-util = { workspace = true }
+
+[dev-dependencies]

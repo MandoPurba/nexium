@@ -26,13 +26,17 @@ pub type EngineSender = mpsc::Sender<EngineCommand>;
 
 /// Spawn the matching engine, settlement, and snapshot tasks. Returns the
 /// command-sender half that HTTP handlers store in `app_data`.
-pub fn spawn_engine(pool: PgPool, ts_pool: Option<PgPool>) -> EngineSender {
+pub fn spawn_engine(
+    pool: PgPool,
+    ts_pool: Option<PgPool>,
+    nats: Option<async_nats::Client>,
+) -> EngineSender {
     let (cmd_tx, cmd_rx) = mpsc::channel(ENGINE_CMD_BUF);
     let (evt_tx, evt_rx) = mpsc::channel(ENGINE_EVT_BUF);
 
     let engine = Engine::new();
     tokio::spawn(engine.run(cmd_rx, evt_tx));
-    tokio::spawn(settlement::run(pool.clone(), ts_pool.clone(), evt_rx));
+    tokio::spawn(settlement::run(pool.clone(), ts_pool.clone(), nats, evt_rx));
 
     if let Some(ts) = ts_pool {
         tokio::spawn(snapshot::run(pool, ts, cmd_tx.clone()));
@@ -68,8 +72,18 @@ pub async fn run() -> anyhow::Result<()> {
             None
         }
     };
+    let nats = match async_nats::connect(&cfg.nats.url).await {
+        Ok(nc) => {
+            tracing::info!(url = %cfg.nats.url, "connected to nats");
+            Some(nc)
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "nats unavailable; realtime events disabled");
+            None
+        }
+    };
     let issuer = JwtIssuer::new(cfg.auth.jwt_secret.expose(), cfg.auth.jwt_expiry_secs);
-    let engine_tx = spawn_engine(pool.clone(), ts_pool);
+    let engine_tx = spawn_engine(pool.clone(), ts_pool, nats);
 
     let host = cfg.server.host.clone();
     let port = cfg.server.port;

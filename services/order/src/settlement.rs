@@ -10,7 +10,7 @@
 
 use anyhow::Context as _;
 use chrono::{DateTime, NaiveTime, Timelike, Utc};
-use nexium_matching_engine::{EngineEvent, Side, Trade};
+use nexium_matching_engine::{EngineEvent, OrderBookSnapshot, Side, Trade};
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Postgres, Transaction};
 use tokio::sync::mpsc;
@@ -19,12 +19,21 @@ use uuid::Uuid;
 const OHLCV_INTERVALS: &[&str] = &["1m", "5m", "15m", "1h", "4h", "1d"];
 
 /// Subscribe to engine events and settle them. Runs until the sender is dropped.
-pub async fn run(pool: PgPool, ts_pool: Option<PgPool>, mut event_rx: mpsc::Receiver<EngineEvent>) {
+pub async fn run(
+    pool: PgPool,
+    ts_pool: Option<PgPool>,
+    nats: Option<async_nats::Client>,
+    mut event_rx: mpsc::Receiver<EngineEvent>,
+) {
     while let Some(event) = event_rx.recv().await {
         match event {
-            EngineEvent::OrderProcessed { taker: _, trades } => {
-                for trade in trades {
-                    if let Err(err) = settle_trade(&pool, &trade).await {
+            EngineEvent::OrderProcessed {
+                taker: _,
+                trades,
+                book_snapshot,
+            } => {
+                for trade in &trades {
+                    if let Err(err) = settle_trade(&pool, trade).await {
                         tracing::error!(
                             error = %err,
                             trade_id = %trade.id,
@@ -32,7 +41,7 @@ pub async fn run(pool: PgPool, ts_pool: Option<PgPool>, mut event_rx: mpsc::Rece
                         );
                     }
                     if let Some(ref ts) = ts_pool {
-                        if let Err(err) = upsert_ohlcv(ts, &trade).await {
+                        if let Err(err) = upsert_ohlcv(ts, trade).await {
                             tracing::error!(
                                 error = %err,
                                 trade_id = %trade.id,
@@ -40,17 +49,89 @@ pub async fn run(pool: PgPool, ts_pool: Option<PgPool>, mut event_rx: mpsc::Rece
                             );
                         }
                     }
+                    if let Some(ref nc) = nats {
+                        publish_trade(nc, trade).await;
+                        publish_order_status(nc, &pool, trade).await;
+                    }
+                }
+                if let Some(ref nc) = nats {
+                    publish_orderbook(nc, &book_snapshot).await;
                 }
             }
-            EngineEvent::OrderCancelled { .. } => {
-                // Cancellation effects are handled synchronously by the
-                // HTTP DELETE handler — engine-side cancel is a no-op here
-                // beyond keeping the book consistent.
+            EngineEvent::OrderCancelled {
+                book_snapshot,
+                order_id: _,
+                removed: _,
+            } => {
+                if let Some(ref nc) = nats {
+                    publish_orderbook(nc, &book_snapshot).await;
+                }
             }
         }
     }
 
     tracing::info!("settlement task event channel closed; shutting down");
+}
+
+// ---------------------------------------------------------------------------
+// NATS publishing
+// ---------------------------------------------------------------------------
+
+fn nats_pair(pair: &str) -> String {
+    pair.replace('/', "-")
+}
+
+async fn publish_trade(nc: &async_nats::Client, trade: &Trade) {
+    let topic = format!("nexium.trades.{}", nats_pair(&trade.pair));
+    let payload = serde_json::json!({
+        "id": trade.id,
+        "pair": trade.pair,
+        "price": trade.price.to_string(),
+        "quantity": trade.quantity.to_string(),
+        "maker_side": format!("{:?}", trade.maker_side).to_lowercase(),
+        "executed_at": trade.executed_at.to_rfc3339(),
+    });
+    if let Err(err) = nc.publish(topic.clone(), payload.to_string().into()).await {
+        tracing::warn!(error = %err, topic, "nats publish trade failed");
+    }
+}
+
+async fn publish_order_status(nc: &async_nats::Client, pool: &PgPool, trade: &Trade) {
+    for (label, order_id, user_id) in [
+        ("maker", trade.maker_order_id, trade.maker_user_id),
+        ("taker", trade.taker_order_id, trade.taker_user_id),
+    ] {
+        let row: Option<(String, String, Decimal, Decimal)> = sqlx::query_as(
+            "SELECT pair, status::text, filled_qty, quantity FROM trading.orders WHERE id = $1",
+        )
+        .bind(order_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None);
+
+        if let Some((pair, status, filled_qty, quantity)) = row {
+            let topic = format!("nexium.orders.{user_id}");
+            let payload = serde_json::json!({
+                "id": order_id,
+                "pair": pair,
+                "role": label,
+                "status": status,
+                "filled_qty": filled_qty.to_string(),
+                "quantity": quantity.to_string(),
+            });
+            let _ = nc.publish(topic, payload.to_string().into()).await;
+        }
+    }
+}
+
+async fn publish_orderbook(nc: &async_nats::Client, snap: &OrderBookSnapshot) {
+    let topic = format!("nexium.orderbook.{}", nats_pair(&snap.pair));
+    let payload = serde_json::json!({
+        "pair": snap.pair,
+        "bids": snap.bids.iter().map(|(p, q)| [p.to_string(), q.to_string()]).collect::<Vec<_>>(),
+        "asks": snap.asks.iter().map(|(p, q)| [p.to_string(), q.to_string()]).collect::<Vec<_>>(),
+    });
+    let _ = nc.publish(topic, payload.to_string().into()).await;
 }
 
 async fn settle_trade(pool: &PgPool, trade: &Trade) -> anyhow::Result<()> {

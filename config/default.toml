@@ -19,6 +19,9 @@ max_connections = 5
 min_connections = 1
 acquire_timeout_secs = 5
 
+[nats]
+url = "nats://localhost:4222"
+
 [redis]
 url = "redis://localhost:6379"
 pool_size = 16

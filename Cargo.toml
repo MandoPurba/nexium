@@ -58,6 +58,13 @@ dotenvy = "0.15"
 
 # Web
 actix-web = "4.13.0"
+actix-ws = "0.4.0"
+
+# Messaging
+async-nats = "0.49.1"
+
+# Futures
+futures-util = "0.3.32"
 
 # Database
 sqlx = { version = "0.9.0", features = [
