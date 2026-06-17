@@ -60,3 +60,12 @@ pub struct Trade {
     pub quantity: Decimal,
     pub executed_at: DateTime<Utc>,
 }
+
+/// A point-in-time snapshot of one side of the order book — a vec of
+/// `(price, total_quantity)` pairs, sorted best-first.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderBookSnapshot {
+    pub pair: String,
+    pub bids: Vec<(Decimal, Decimal)>,
+    pub asks: Vec<(Decimal, Decimal)>,
+}

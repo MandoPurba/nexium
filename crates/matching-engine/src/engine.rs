@@ -6,18 +6,22 @@
 
 use std::collections::HashMap;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use crate::orderbook::OrderBook;
-use crate::types::{Order, Trade};
+use crate::types::{Order, OrderBookSnapshot, Trade};
 
-#[derive(Debug, Clone)]
 pub enum EngineCommand {
     /// Match this order against the book; rest the remainder if it's a limit order.
     PlaceOrder(Order),
     /// Cancel a resting order by id (pair is required so we don't scan every book).
     CancelOrder { order_id: Uuid, pair: String },
+    /// Return a snapshot of the current orderbook for a pair.
+    GetOrderBook {
+        pair: String,
+        reply: oneshot::Sender<OrderBookSnapshot>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +96,10 @@ impl Engine {
                     let _ = event_tx
                         .send(EngineEvent::OrderCancelled { order_id, removed })
                         .await;
+                }
+                EngineCommand::GetOrderBook { pair, reply } => {
+                    let snapshot = self.book_for(&pair).snapshot();
+                    let _ = reply.send(snapshot);
                 }
             }
         }

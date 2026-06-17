@@ -26,6 +26,6 @@ rust_decimal = { workspace = true }
 actix-web = { workspace = true }
 sqlx = { workspace = true }
 validator = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }

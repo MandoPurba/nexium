@@ -9,14 +9,17 @@
 //! 3. Settles wallets — see [`apply_trade_to_wallets`] for the details.
 
 use anyhow::Context as _;
+use chrono::{DateTime, NaiveTime, Timelike, Utc};
 use nexium_matching_engine::{EngineEvent, Side, Trade};
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Postgres, Transaction};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+const OHLCV_INTERVALS: &[&str] = &["1m", "5m", "15m", "1h", "4h", "1d"];
+
 /// Subscribe to engine events and settle them. Runs until the sender is dropped.
-pub async fn run(pool: PgPool, mut event_rx: mpsc::Receiver<EngineEvent>) {
+pub async fn run(pool: PgPool, ts_pool: Option<PgPool>, mut event_rx: mpsc::Receiver<EngineEvent>) {
     while let Some(event) = event_rx.recv().await {
         match event {
             EngineEvent::OrderProcessed { taker: _, trades } => {
@@ -27,6 +30,15 @@ pub async fn run(pool: PgPool, mut event_rx: mpsc::Receiver<EngineEvent>) {
                             trade_id = %trade.id,
                             "failed to settle trade"
                         );
+                    }
+                    if let Some(ref ts) = ts_pool {
+                        if let Err(err) = upsert_ohlcv(ts, &trade).await {
+                            tracing::error!(
+                                error = %err,
+                                trade_id = %trade.id,
+                                "failed to upsert ohlcv"
+                            );
+                        }
                     }
                 }
             }
@@ -277,6 +289,61 @@ async fn load_order_for_settlement(
     })
 }
 
+// ---------------------------------------------------------------------------
+// OHLCV aggregation
+// ---------------------------------------------------------------------------
+
+async fn upsert_ohlcv(ts_pool: &PgPool, trade: &Trade) -> anyhow::Result<()> {
+    for interval in OHLCV_INTERVALS {
+        let bucket = floor_to_interval(trade.executed_at, interval);
+        sqlx::query(
+            r#"
+            INSERT INTO market.ohlcv (pair, interval, open, high, low, close, volume, bucket)
+            VALUES ($1, $2, $3, $3, $3, $3, $4, $5)
+            ON CONFLICT (pair, interval, bucket) DO UPDATE
+            SET high   = GREATEST(market.ohlcv.high, EXCLUDED.high),
+                low    = LEAST(market.ohlcv.low, EXCLUDED.low),
+                close  = EXCLUDED.close,
+                volume = market.ohlcv.volume + EXCLUDED.volume
+            "#,
+        )
+        .bind(&trade.pair)
+        .bind(interval)
+        .bind(trade.price)
+        .bind(trade.quantity)
+        .bind(bucket)
+        .execute(ts_pool)
+        .await
+        .context("upsert ohlcv")?;
+    }
+    Ok(())
+}
+
+fn floor_to_interval(ts: DateTime<Utc>, interval: &str) -> DateTime<Utc> {
+    match interval {
+        "1m" => floor_minutes(ts, 1),
+        "5m" => floor_minutes(ts, 5),
+        "15m" => floor_minutes(ts, 15),
+        "1h" => floor_minutes(ts, 60),
+        "4h" => floor_minutes(ts, 240),
+        "1d" => ts.date_naive().and_time(NaiveTime::MIN).and_utc(),
+        _ => ts,
+    }
+}
+
+fn floor_minutes(ts: DateTime<Utc>, mins: u32) -> DateTime<Utc> {
+    let total_minutes = ts.hour() * 60 + ts.minute();
+    let floored = (total_minutes / mins) * mins;
+    ts.date_naive()
+        .and_hms_opt(floored / 60, floored % 60, 0)
+        .unwrap()
+        .and_utc()
+}
+
+// ---------------------------------------------------------------------------
+// Wallet transaction logging
+// ---------------------------------------------------------------------------
+
 async fn record_wallet_txn(
     tx: &mut Transaction<'_, Postgres>,
     user_id: Uuid,
@@ -314,4 +381,52 @@ async fn record_wallet_txn(
     .await
     .context("insert wallet_txn")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn floor_1m() {
+        let ts = Utc.with_ymd_and_hms(2026, 6, 17, 14, 23, 45).unwrap();
+        let b = floor_to_interval(ts, "1m");
+        assert_eq!(b, Utc.with_ymd_and_hms(2026, 6, 17, 14, 23, 0).unwrap());
+    }
+
+    #[test]
+    fn floor_5m() {
+        let ts = Utc.with_ymd_and_hms(2026, 6, 17, 14, 23, 45).unwrap();
+        let b = floor_to_interval(ts, "5m");
+        assert_eq!(b, Utc.with_ymd_and_hms(2026, 6, 17, 14, 20, 0).unwrap());
+    }
+
+    #[test]
+    fn floor_15m() {
+        let ts = Utc.with_ymd_and_hms(2026, 6, 17, 14, 23, 45).unwrap();
+        let b = floor_to_interval(ts, "15m");
+        assert_eq!(b, Utc.with_ymd_and_hms(2026, 6, 17, 14, 15, 0).unwrap());
+    }
+
+    #[test]
+    fn floor_1h() {
+        let ts = Utc.with_ymd_and_hms(2026, 6, 17, 14, 23, 45).unwrap();
+        let b = floor_to_interval(ts, "1h");
+        assert_eq!(b, Utc.with_ymd_and_hms(2026, 6, 17, 14, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn floor_4h() {
+        let ts = Utc.with_ymd_and_hms(2026, 6, 17, 14, 23, 45).unwrap();
+        let b = floor_to_interval(ts, "4h");
+        assert_eq!(b, Utc.with_ymd_and_hms(2026, 6, 17, 12, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn floor_1d() {
+        let ts = Utc.with_ymd_and_hms(2026, 6, 17, 14, 23, 45).unwrap();
+        let b = floor_to_interval(ts, "1d");
+        assert_eq!(b, Utc.with_ymd_and_hms(2026, 6, 17, 0, 0, 0).unwrap());
+    }
 }
