@@ -1883,14 +1883,23 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 name = "order-service"
 version = "0.1.0"
 dependencies = [
+ "actix-web",
  "anyhow",
+ "chrono",
  "nexium-config",
  "nexium-core",
  "nexium-db",
- "nexium-matching-engine",
  "nexium-telemetry",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
  "tokio",
  "tracing",
+ "uuid",
+ "validator",
+ "wallet-service",
 ]
 
 [[package]]

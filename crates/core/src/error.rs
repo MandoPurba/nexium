@@ -21,7 +21,16 @@ pub enum ApiError {
     Unauthorized,
 
     #[error("{0}")]
+    Forbidden(String),
+
+    #[error("{0}")]
     NotFound(String),
+
+    #[error("{0}")]
+    InsufficientBalance(String),
+
+    #[error("{0}")]
+    PairInactive(String),
 
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
@@ -33,7 +42,10 @@ impl ApiError {
             Self::Validation(_) => "VALIDATION_ERROR",
             Self::Conflict(_) => "CONFLICT",
             Self::Unauthorized => "UNAUTHORIZED",
+            Self::Forbidden(_) => "FORBIDDEN",
             Self::NotFound(_) => "NOT_FOUND",
+            Self::InsufficientBalance(_) => "INSUFFICIENT_BALANCE",
+            Self::PairInactive(_) => "PAIR_INACTIVE",
             Self::Internal(_) => "INTERNAL_ERROR",
         }
     }
@@ -43,7 +55,10 @@ impl ApiError {
             Self::Validation(_) => "request validation failed".to_string(),
             Self::Conflict(m) => m.clone(),
             Self::Unauthorized => "invalid credentials".to_string(),
+            Self::Forbidden(m) => m.clone(),
             Self::NotFound(m) => m.clone(),
+            Self::InsufficientBalance(m) => m.clone(),
+            Self::PairInactive(m) => m.clone(),
             Self::Internal(_) => "internal server error".to_string(),
         }
     }
@@ -62,7 +77,11 @@ impl ResponseError for ApiError {
             Self::Validation(_) => StatusCode::BAD_REQUEST,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::InsufficientBalance(_) | Self::PairInactive(_) => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

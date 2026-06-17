@@ -25,6 +25,6 @@ uuid = { workspace = true }
 
 actix-web = { workspace = true }
 sqlx = { workspace = true }
-argon2 = "0.5"
+argon2 = { workspace = true }
 validator = { workspace = true }
 rand = { workspace = true }

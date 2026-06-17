@@ -12,7 +12,19 @@ nexium-core = { workspace = true }
 nexium-config = { workspace = true }
 nexium-telemetry = { workspace = true }
 nexium-db = { workspace = true }
-nexium-matching-engine = { workspace = true }
+wallet-service = { path = "../wallet" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true }
+
+actix-web = { workspace = true }
+sqlx = { workspace = true }
+validator = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
