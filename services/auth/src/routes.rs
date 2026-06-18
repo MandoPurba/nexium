@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -17,23 +18,38 @@ use crate::repository::{self, NewUser, RepoError};
 
 // ---- POST /auth/register --------------------------------------------------
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct RegisterRequest {
     #[validate(email)]
+    #[schema(example = "alice@example.com")]
     pub email: String,
 
     #[validate(length(min = 8, max = 256))]
+    #[schema(example = "s3cureP@ss")]
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserResponse {
     pub id: Uuid,
+    #[schema(example = "alice@example.com")]
     pub email: String,
+    #[schema(example = "pending")]
     pub status: String,
     pub created_at: DateTime<Utc>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/register",
+    tag = "Auth",
+    request_body = RegisterRequest,
+    responses(
+        (status = 201, description = "User registered", body = UserResponse),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 409, description = "Email already registered", body = ErrorResponse),
+    )
+)]
 #[post("/auth/register")]
 #[tracing::instrument(name = "auth.register", skip_all, fields(email = %body.email))]
 pub async fn register(
@@ -63,8 +79,6 @@ pub async fn register(
         RepoError::Sqlx(err) => ApiError::Internal(err.into()),
     })?;
 
-    // Direct fn call into wallet-service for now; becomes a NATS event once
-    // messaging lands (Sprint 5+).
     wallet_service::repository::create_default_wallets(pool.get_ref(), user.id)
         .await
         .map_err(|e| ApiError::Internal(e.into()))?;
@@ -81,24 +95,38 @@ pub async fn register(
 
 // ---- POST /auth/login -----------------------------------------------------
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct LoginRequest {
     #[validate(email)]
+    #[schema(example = "alice@example.com")]
     pub email: String,
 
-    // No min length here — we accept whatever the user typed and rely on
-    // the verify step to reject. Cap at 256 to prevent argon2 DoS.
     #[validate(length(min = 1, max = 256))]
+    #[schema(example = "s3cureP@ss")]
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct LoginResponse {
+    #[schema(example = "eyJhbGciOiJIUzI1NiIs...")]
     pub access_token: String,
+    #[schema(example = "Bearer")]
     pub token_type: &'static str,
+    #[schema(example = 3600)]
     pub expires_in: i64,
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    tag = "Auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Invalid credentials", body = ErrorResponse),
+    )
+)]
 #[post("/auth/login")]
 #[tracing::instrument(name = "auth.login", skip_all, fields(email = %body.email))]
 pub async fn login(
@@ -116,9 +144,6 @@ pub async fn login(
         .await
         .map_err(|e| ApiError::Internal(e.into()))?;
 
-    // Verify in web::block (CPU-bound). When the user doesn't exist we still
-    // run argon2 against a dummy hash so an attacker can't tell unknown email
-    // from wrong password by timing.
     let (valid, user_id) = web::block(
         move || -> Result<(bool, Option<Uuid>), argon2::password_hash::Error> {
             match user_opt {
@@ -155,11 +180,14 @@ pub async fn login(
 
 // ---- GET /auth/me ---------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MeResponse {
     pub id: Uuid,
+    #[schema(example = "alice@example.com")]
     pub email: String,
+    #[schema(example = "active")]
     pub status: String,
+    #[schema(example = "basic")]
     pub kyc_level: String,
 }
 
@@ -171,6 +199,16 @@ struct MeRow {
     kyc_level: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/auth/me",
+    tag = "Auth",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Current user profile", body = MeResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+    )
+)]
 #[get("/auth/me")]
 #[tracing::instrument(name = "auth.me", skip_all, fields(user_id = %user.id))]
 pub async fn me(pool: web::Data<PgPool>, user: AuthUser) -> Result<HttpResponse, ApiError> {
@@ -210,16 +248,19 @@ pub async fn me(pool: web::Data<PgPool>, user: AuthUser) -> Result<HttpResponse,
 
 // ---- POST /auth/api-keys ---------------------------------------------------
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateApiKeyRequest {
+    #[schema(example = json!(["read", "trade"]))]
     pub permissions: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ApiKeyResponse {
     pub id: Uuid,
+    #[schema(example = "nex_live_a1b2c3d4e5f6...")]
     pub key: String,
+    #[schema(example = json!(["read", "trade"]))]
     pub permissions: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
 }
@@ -235,6 +276,18 @@ fn hash_api_key(key: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/api-keys",
+    tag = "Auth",
+    security(("bearer_auth" = [])),
+    request_body = CreateApiKeyRequest,
+    responses(
+        (status = 201, description = "API key created (key shown once)", body = ApiKeyResponse),
+        (status = 400, description = "Invalid permissions", body = ErrorResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+    )
+)]
 #[post("/auth/api-keys")]
 #[tracing::instrument(name = "auth.create_api_key", skip_all, fields(user_id = %user.id))]
 pub async fn create_api_key(
@@ -279,4 +332,16 @@ pub async fn create_api_key(
         permissions: body.permissions,
         expires_at: body.expires_at,
     }))
+}
+
+// ---- Error response schema for OpenAPI ------------------------------------
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorResponse {
+    #[schema(example = "VALIDATION_ERROR")]
+    pub code: String,
+    #[schema(example = "request validation failed")]
+    pub message: String,
+    #[schema(nullable)]
+    pub details: Option<serde_json::Value>,
 }

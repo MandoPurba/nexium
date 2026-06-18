@@ -28,5 +28,7 @@ sqlx = { workspace = true }
 validator = { workspace = true }
 serde_json = { workspace = true }
 async-nats = { workspace = true }
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
 
 [dev-dependencies]

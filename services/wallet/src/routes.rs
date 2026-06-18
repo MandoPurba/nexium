@@ -4,6 +4,7 @@ use actix_web::{HttpResponse, get, post, web};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
@@ -14,12 +15,16 @@ use crate::repository::{self, DepositError, WalletRecord};
 
 // ---- shared response types -------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct WalletResponse {
     pub id: Uuid,
+    #[schema(example = "USDT")]
     pub currency: String,
+    #[schema(value_type = String, example = "1000.000000000000000000")]
     pub balance: Decimal,
+    #[schema(value_type = String, example = "0.000000000000000000")]
     pub locked_balance: Decimal,
+    #[schema(value_type = String, example = "1000.000000000000000000")]
     pub available: Decimal,
 }
 
@@ -38,6 +43,16 @@ impl From<WalletRecord> for WalletResponse {
 
 // ---- GET /wallets -----------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/wallets",
+    tag = "Wallet",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "List of user wallets", body = Vec<WalletResponse>),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+    )
+)]
 #[get("/wallets")]
 #[tracing::instrument(name = "wallet.list", skip_all, fields(user_id = %user.id))]
 pub async fn list_wallets(
@@ -54,6 +69,20 @@ pub async fn list_wallets(
 
 // ---- GET /wallets/{currency} -------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/wallets/{currency}",
+    tag = "Wallet",
+    security(("bearer_auth" = [])),
+    params(
+        ("currency" = String, Path, description = "Currency code (e.g. BTC, USDT)")
+    ),
+    responses(
+        (status = 200, description = "Wallet details", body = WalletResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 404, description = "Wallet not found", body = ErrorResponse),
+    )
+)]
 #[get("/wallets/{currency}")]
 #[tracing::instrument(name = "wallet.get", skip_all, fields(user_id = %user.id))]
 pub async fn get_wallet(
@@ -80,23 +109,41 @@ fn validate_positive_amount(amount: &Decimal) -> Result<(), ValidationError> {
     Ok(())
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct DepositRequest {
     #[validate(length(min = 1, max = 10))]
+    #[schema(example = "USDT")]
     pub currency: String,
 
     #[validate(custom(function = "validate_positive_amount"))]
+    #[schema(value_type = String, example = "100.50")]
     pub amount: Decimal,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DepositResponse {
     pub txn_id: Uuid,
+    #[schema(example = "USDT")]
     pub currency: String,
+    #[schema(value_type = String, example = "100.50")]
     pub amount: Decimal,
+    #[schema(example = "confirmed")]
     pub status: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/wallets/deposit",
+    tag = "Wallet",
+    security(("bearer_auth" = [])),
+    request_body = DepositRequest,
+    responses(
+        (status = 201, description = "Deposit confirmed", body = DepositResponse),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 404, description = "Currency not found", body = ErrorResponse),
+    )
+)]
 #[post("/wallets/deposit")]
 #[tracing::instrument(name = "wallet.deposit", skip_all, fields(user_id = %user.id, currency = %body.currency))]
 pub async fn deposit(
@@ -126,4 +173,16 @@ pub async fn deposit(
         amount: txn.amount,
         status: txn.status,
     }))
+}
+
+// ---- Error response schema for OpenAPI ------------------------------------
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorResponse {
+    #[schema(example = "VALIDATION_ERROR")]
+    pub code: String,
+    #[schema(example = "request validation failed")]
+    pub message: String,
+    #[schema(nullable)]
+    pub details: Option<serde_json::Value>,
 }

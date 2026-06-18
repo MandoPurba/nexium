@@ -1,0 +1,495 @@
+{
+  "info": {
+    "name": "Nexium Exchange API",
+    "description": "Complete API collection for Nexium cryptocurrency exchange backend.\n\nFlow: Register → Login → (use token) → Deposit → Place Order",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "auth_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "wallet_url",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "order_url",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "market_url",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "gateway_url",
+      "value": "http://localhost:8084"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"strongpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_url}}/auth/register",
+              "host": ["{{auth_url}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('user_id', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"strongpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_url}}/auth/login",
+              "host": ["{{auth_url}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', json.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{auth_url}}/auth/me",
+              "host": ["{{auth_url}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Create API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissions\": [\"read\", \"trade\"],\n  \"expires_at\": null\n}"
+            },
+            "url": {
+              "raw": "{{auth_url}}/auth/api-keys",
+              "host": ["{{auth_url}}"],
+              "path": ["auth", "api-keys"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "List Wallets",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{wallet_url}}/wallets",
+              "host": ["{{wallet_url}}"],
+              "path": ["wallets"]
+            }
+          }
+        },
+        {
+          "name": "Get Wallet (USDT)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{wallet_url}}/wallets/USDT",
+              "host": ["{{wallet_url}}"],
+              "path": ["wallets", "USDT"]
+            }
+          }
+        },
+        {
+          "name": "Get Wallet (BTC)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{wallet_url}}/wallets/BTC",
+              "host": ["{{wallet_url}}"],
+              "path": ["wallets", "BTC"]
+            }
+          }
+        },
+        {
+          "name": "Deposit USDT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currency\": \"USDT\",\n  \"amount\": \"10000\"\n}"
+            },
+            "url": {
+              "raw": "{{wallet_url}}/wallets/deposit",
+              "host": ["{{wallet_url}}"],
+              "path": ["wallets", "deposit"]
+            }
+          }
+        },
+        {
+          "name": "Deposit BTC",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currency\": \"BTC\",\n  \"amount\": \"1\"\n}"
+            },
+            "url": {
+              "raw": "{{wallet_url}}/wallets/deposit",
+              "host": ["{{wallet_url}}"],
+              "path": ["wallets", "deposit"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Trading",
+      "item": [
+        {
+          "name": "List Pairs",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{order_url}}/pairs",
+              "host": ["{{order_url}}"],
+              "path": ["pairs"]
+            }
+          }
+        },
+        {
+          "name": "Place Limit Buy Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pair\": \"BTC/USDT\",\n  \"side\": \"buy\",\n  \"type\": \"limit\",\n  \"price\": \"65000\",\n  \"quantity\": \"0.01\"\n}"
+            },
+            "url": {
+              "raw": "{{order_url}}/orders",
+              "host": ["{{order_url}}"],
+              "path": ["orders"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('order_id', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Place Limit Sell Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pair\": \"BTC/USDT\",\n  \"side\": \"sell\",\n  \"type\": \"limit\",\n  \"price\": \"65000\",\n  \"quantity\": \"0.01\"\n}"
+            },
+            "url": {
+              "raw": "{{order_url}}/orders",
+              "host": ["{{order_url}}"],
+              "path": ["orders"]
+            }
+          }
+        },
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{order_url}}/orders?limit=20",
+              "host": ["{{order_url}}"],
+              "path": ["orders"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Orders (filter by pair)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{order_url}}/orders?pair=BTC/USDT&status=open",
+              "host": ["{{order_url}}"],
+              "path": ["orders"],
+              "query": [
+                {
+                  "key": "pair",
+                  "value": "BTC/USDT"
+                },
+                {
+                  "key": "status",
+                  "value": "open"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{order_url}}/orders/{{order_id}}",
+              "host": ["{{order_url}}"],
+              "path": ["orders", "{{order_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{order_url}}/orders/{{order_id}}",
+              "host": ["{{order_url}}"],
+              "path": ["orders", "{{order_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Market Data",
+      "item": [
+        {
+          "name": "OHLCV Candles (1h)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{market_url}}/market/ohlcv?pair=BTC/USDT&interval=1h&limit=100",
+              "host": ["{{market_url}}"],
+              "path": ["market", "ohlcv"],
+              "query": [
+                {
+                  "key": "pair",
+                  "value": "BTC/USDT"
+                },
+                {
+                  "key": "interval",
+                  "value": "1h"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "OHLCV Candles (1d)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{market_url}}/market/ohlcv?pair=BTC/USDT&interval=1d&limit=30",
+              "host": ["{{market_url}}"],
+              "path": ["market", "ohlcv"],
+              "query": [
+                {
+                  "key": "pair",
+                  "value": "BTC/USDT"
+                },
+                {
+                  "key": "interval",
+                  "value": "1d"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Orderbook (BTC/USDT)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{market_url}}/market/orderbook/BTC-USDT",
+              "host": ["{{market_url}}"],
+              "path": ["market", "orderbook", "BTC-USDT"]
+            }
+          }
+        },
+        {
+          "name": "Recent Trades (BTC/USDT)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{market_url}}/market/trades/BTC-USDT?limit=50",
+              "host": ["{{market_url}}"],
+              "path": ["market", "trades", "BTC-USDT"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health & Metrics",
+      "item": [
+        {
+          "name": "Metrics (auth)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{auth_url}}/metrics",
+              "host": ["{{auth_url}}"],
+              "path": ["metrics"]
+            }
+          }
+        },
+        {
+          "name": "Metrics (order)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{order_url}}/metrics",
+              "host": ["{{order_url}}"],
+              "path": ["metrics"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -30,3 +30,5 @@ validator = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }

@@ -23,6 +23,8 @@ uuid = { workspace = true }
 actix-web = { workspace = true }
 sqlx = { workspace = true }
 validator = { workspace = true }
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
