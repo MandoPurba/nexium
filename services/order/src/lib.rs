@@ -11,7 +11,9 @@ pub mod snapshot;
 use actix_web::{App, HttpServer, web};
 use nexium_config::AppConfig;
 use nexium_core::jwt::JwtIssuer;
+use nexium_core::metrics::metrics_handler;
 use nexium_core::middleware::JwtAuth;
+use nexium_core::rate_limit::ip_rate_limiter;
 use nexium_matching_engine::{Engine, EngineCommand};
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -52,6 +54,7 @@ pub fn spawn_engine(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(routes::list_pairs).service(
         web::scope("")
+            .wrap(ip_rate_limiter(100))
             .wrap(JwtAuth)
             .service(routes::place_order)
             .service(routes::list_orders)
@@ -95,6 +98,7 @@ pub async fn run() -> anyhow::Result<()> {
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(issuer.clone()))
             .app_data(web::Data::new(engine_tx.clone()))
+            .service(metrics_handler)
             .configure(configure)
     })
     .bind((host.as_str(), port))?

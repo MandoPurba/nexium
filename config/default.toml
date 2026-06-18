@@ -29,6 +29,7 @@ pool_size = 16
 [telemetry]
 log_level = "info"
 service_name = "nexium"
+otlp_endpoint = "http://localhost:4317"
 
 [auth]
 jwt_secret = "change-me-please"

@@ -608,7 +608,8 @@ async fn matching_two_orders_settles_trade_and_wallets(pool: PgPool) {
     assert_eq!(alice_status, "filled");
     assert_eq!(bob_status, "filled");
 
-    // Wallets: Alice gives up 0.01 BTC, gets 650 USDT.
+    // trade_value = 650, maker_fee = 0.001 × 650 = 0.65, taker_fee = 0.002 × 650 = 1.30
+    // Wallets: Alice gives up 0.01 BTC, gets 650 - 0.65 = 649.35 USDT.
     let alice_btc = wallet_repo::find_by_currency(&pool, alice, "BTC")
         .await
         .unwrap()
@@ -619,9 +620,12 @@ async fn matching_two_orders_settles_trade_and_wallets(pool: PgPool) {
         .unwrap();
     assert_eq!(alice_btc.balance, Decimal::from_str_exact("0.99").unwrap());
     assert_eq!(alice_btc.locked_balance, Decimal::ZERO);
-    assert_eq!(alice_usdt.balance, Decimal::from(650));
+    assert_eq!(
+        alice_usdt.balance,
+        Decimal::from_str_exact("649.35").unwrap()
+    );
 
-    // Bob: pays 650 USDT, gets 0.01 BTC. No leftover lock.
+    // Bob: pays 650 USDT + 1.30 fee, gets 0.01 BTC. No leftover lock.
     let bob_btc = wallet_repo::find_by_currency(&pool, bob, "BTC")
         .await
         .unwrap()
@@ -631,7 +635,7 @@ async fn matching_two_orders_settles_trade_and_wallets(pool: PgPool) {
         .unwrap()
         .unwrap();
     assert_eq!(bob_btc.balance, Decimal::from_str_exact("0.01").unwrap());
-    assert_eq!(bob_usdt.balance, Decimal::from(350));
+    assert_eq!(bob_usdt.balance, Decimal::from_str_exact("348.70").unwrap());
     assert_eq!(bob_usdt.locked_balance, Decimal::ZERO);
 }
 
@@ -694,21 +698,28 @@ async fn buy_at_higher_price_refunds_difference_on_settle(pool: PgPool) {
             .unwrap();
     assert_eq!(trade_price, Decimal::from(64900));
 
+    // trade_value = 649, maker_fee = 0.001 × 649 = 0.649, taker_fee = 0.002 × 649 = 1.298
     // Bob: locked 650 (65000 × 0.01), actually paid 649 (64900 × 0.01),
-    // so 1 USDT should be refunded → balance = 1000 - 650 + 1 = 351.
+    // 1 USDT refund, then taker_fee deducted → balance = 1000 - 650 + 1 - 1.298 = 349.702.
     let bob_usdt = wallet_repo::find_by_currency(&pool, bob, "USDT")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(bob_usdt.balance, Decimal::from(351));
+    assert_eq!(
+        bob_usdt.balance,
+        Decimal::from_str_exact("349.702").unwrap()
+    );
     assert_eq!(bob_usdt.locked_balance, Decimal::ZERO);
 
-    // Alice received 649 USDT.
+    // Alice received 649 - 0.649 = 648.351 USDT.
     let alice_usdt = wallet_repo::find_by_currency(&pool, alice, "USDT")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(alice_usdt.balance, Decimal::from(649));
+    assert_eq!(
+        alice_usdt.balance,
+        Decimal::from_str_exact("648.351").unwrap()
+    );
 }
 
 #[sqlx::test(migrations = "../../migrations/postgres")]
@@ -778,4 +789,114 @@ async fn partial_fill_status_is_partially_filled(pool: PgPool) {
 
     // Suppress unused-variable warnings; these are seeded for side-effect.
     let _ = (alice, bob);
+}
+
+// ---------------------------------------------------------------------------
+// E2E: register → deposit → order → match → balance + fee check
+// ---------------------------------------------------------------------------
+
+#[sqlx::test(migrations = "../../migrations/postgres")]
+async fn e2e_register_deposit_order_match_with_fees(pool: PgPool) {
+    // Seed fee tiers (normally done by migration, but sqlx::test only runs
+    // the migration files — our seed migration covers this).
+
+    // Seller: Alice — deposit 1 BTC, sell 0.01 @ 65000
+    let (alice, alice_token) = seed_active_user(&pool).await;
+    wallet_repo::deposit(&pool, alice, "BTC", Decimal::from(1))
+        .await
+        .unwrap();
+
+    // Buyer: Bob — deposit 1000 USDT, buy 0.01 @ 65000
+    let (bob, bob_token) = seed_active_user(&pool).await;
+    wallet_repo::deposit(&pool, bob, "USDT", Decimal::from(1000))
+        .await
+        .unwrap();
+
+    let app = build_app!(pool);
+
+    // Alice places sell
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri("/orders")
+            .insert_header(("Authorization", format!("Bearer {alice_token}")))
+            .set_json(json!({"pair": "BTC/USDT", "side": "sell", "type": "limit",
+                             "price": "65000", "quantity": "0.01"}))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), 201);
+
+    // Bob places crossing buy
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri("/orders")
+            .insert_header(("Authorization", format!("Bearer {bob_token}")))
+            .set_json(json!({"pair": "BTC/USDT", "side": "buy", "type": "limit",
+                             "price": "65000", "quantity": "0.01"}))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), 201);
+
+    // Wait for settlement + fees
+    let pool_probe = pool.clone();
+    let settled = await_condition(Duration::from_secs(3), || {
+        let pool = pool_probe.clone();
+        async move {
+            let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM fee.fees")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            count >= 2
+        }
+    })
+    .await;
+    assert!(settled, "fee records should be inserted after settlement");
+
+    // trade_value = 65000 * 0.01 = 650
+    // maker_fee = 0.001 * 650 = 0.65
+    // taker_fee = 0.002 * 650 = 1.30
+    let trade_value = Decimal::from(650);
+    let maker_fee = Decimal::from_str_exact("0.65").unwrap();
+    let taker_fee = Decimal::from_str_exact("1.3").unwrap();
+
+    // Fee records exist
+    let fee_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM fee.fees")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(fee_count, 2);
+
+    // Alice (maker/seller): receives trade_value in USDT, minus maker_fee
+    let alice_usdt = wallet_repo::find_by_currency(&pool, alice, "USDT")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(alice_usdt.balance, trade_value - maker_fee);
+
+    // Bob (taker/buyer): had 1000, locked 650, paid 650, fee deducted from remaining
+    // balance = 1000 - 650 (lock) + 0 (refund, same price) - taker_fee
+    let bob_usdt = wallet_repo::find_by_currency(&pool, bob, "USDT")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(bob_usdt.balance, Decimal::from(350) - taker_fee);
+    assert_eq!(bob_usdt.locked_balance, Decimal::ZERO);
+
+    // Bob received 0.01 BTC
+    let bob_btc = wallet_repo::find_by_currency(&pool, bob, "BTC")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(bob_btc.balance, Decimal::from_str_exact("0.01").unwrap());
+
+    // Alice BTC: 1 - 0.01 (sold) = 0.99, no lock
+    let alice_btc = wallet_repo::find_by_currency(&pool, alice, "BTC")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(alice_btc.balance, Decimal::from_str_exact("0.99").unwrap());
+    assert_eq!(alice_btc.locked_balance, Decimal::ZERO);
 }

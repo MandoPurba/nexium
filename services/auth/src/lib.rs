@@ -10,17 +10,23 @@ pub mod routes;
 use actix_web::{App, HttpServer, web};
 use nexium_config::AppConfig;
 use nexium_core::jwt::JwtIssuer;
+use nexium_core::metrics::metrics_handler;
 use nexium_core::middleware::JwtAuth;
+use nexium_core::rate_limit::ip_rate_limiter;
 
-/// Mount every auth route on `cfg`.
-///
-/// Public routes (`/auth/register`, `/auth/login`) sit at the top level.
-/// Protected routes (`/auth/me`) live inside a scope wrapped with
-/// [`JwtAuth`], which pulls the [`JwtIssuer`] from `app_data`.
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(routes::register)
-        .service(routes::login)
-        .service(web::scope("").wrap(JwtAuth).service(routes::me));
+    cfg.service(
+        web::scope("")
+            .wrap(ip_rate_limiter(10))
+            .service(routes::register)
+            .service(routes::login)
+            .service(
+                web::scope("")
+                    .wrap(JwtAuth)
+                    .service(routes::me)
+                    .service(routes::create_api_key),
+            ),
+    );
 }
 
 /// Bootstrap the auth-service process: load config, init telemetry, build
@@ -46,6 +52,7 @@ pub async fn run() -> anyhow::Result<()> {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(issuer.clone()))
+            .service(metrics_handler)
             .configure(configure)
     })
     .bind((host.as_str(), port))?

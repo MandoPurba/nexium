@@ -28,3 +28,5 @@ sqlx = { workspace = true }
 argon2 = { workspace = true }
 validator = { workspace = true }
 rand = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
