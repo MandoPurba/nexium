@@ -9,25 +9,20 @@ A microservice-lite exchange backend built as a portfolio + learning project. In
 
 ## Architecture
 
-```
-┌────────────┐     ┌─────────────┐     ┌──────────────┐
-│  Clients   │────▸│   Gateway   │◂───▸│     NATS     │
-│ (REST/WS)  │     │  (WS only)  │     │  (pub/sub)   │
-└────────────┘     └─────────────┘     └──────┬───────┘
-                                              │
-       ┌──────────────────────────────────────┼──────────────────┐
-       │                                      │                  │
-┌──────▼──────┐  ┌──────────────┐  ┌─────────▼────┐  ┌──────────▼───────┐
-│ Auth Service│  │Wallet Service│  │Order Service  │  │Market Data Service│
-│ :8080       │  │ :8081        │  │ :8082         │  │ :8083             │
-└──────┬──────┘  └──────┬───────┘  └──────┬────────┘  └────────┬─────────┘
-       │                │                  │                     │
-       └────────────────┴──────────────────┴─────────────────────┘
-                               │                    │
-                        ┌──────▼──────┐     ┌───────▼───────┐
-                        │ PostgreSQL  │     │  TimescaleDB  │
-                        │ (primary)   │     │ (time-series) │
-                        └─────────────┘     └───────────────┘
+```mermaid
+graph TB
+  Clients["Clients (REST/WS)"] <--> GW["Gateway (WS only)"]
+  GW <--> NATS["NATS (pub/sub)"]
+
+  NATS --> Auth["Auth Service :8080"]
+  NATS --> Wallet["Wallet Service :8081"]
+  NATS --> Order["Order Service :8082"]
+  NATS --> Market["Market Data Service :8083"]
+
+  Auth --> PG["PostgreSQL (primary)"]
+  Wallet --> PG
+  Order --> PG
+  Market --> TS["TimescaleDB (time-series)"]
 ```
 
 ### Services
