@@ -1,0 +1,153 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'SF Pro Display', 'SF Pro', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: #0b0e11;
+  --foreground: #eaecef;
+  --card: #0d1014;
+  --card-foreground: #eaecef;
+  --popover: #11151a;
+  --popover-foreground: #eaecef;
+  --primary: #2ebd85;
+  --primary-foreground: #04130c;
+  --secondary: #161a1e;
+  --secondary-foreground: #eaecef;
+  --muted: #11151a;
+  --muted-foreground: #848e9c;
+  --accent: #1c2127;
+  --accent-foreground: #eaecef;
+  --destructive: #f6465d;
+  --border: #1c2127;
+  --input: #242a31;
+  --ring: #2ebd85;
+  --chart-1: #2ebd85;
+  --chart-2: #f6465d;
+  --chart-3: #f0b90b;
+  --chart-4: #627eea;
+  --chart-5: #14f195;
+  --radius: 0.5rem;
+  --sidebar: #0d1014;
+  --sidebar-foreground: #eaecef;
+  --sidebar-primary: #2ebd85;
+  --sidebar-primary-foreground: #04130c;
+  --sidebar-accent: #1c2127;
+  --sidebar-accent-foreground: #eaecef;
+  --sidebar-border: #1c2127;
+  --sidebar-ring: #2ebd85;
+}
+
+/* Keep .dark class identical so forced dark mode in html still works */
+.dark {
+  --background: #0b0e11;
+  --foreground: #eaecef;
+  --card: #0d1014;
+  --card-foreground: #eaecef;
+  --popover: #11151a;
+  --popover-foreground: #eaecef;
+  --primary: #2ebd85;
+  --primary-foreground: #04130c;
+  --secondary: #161a1e;
+  --secondary-foreground: #eaecef;
+  --muted: #11151a;
+  --muted-foreground: #848e9c;
+  --accent: #1c2127;
+  --accent-foreground: #eaecef;
+  --destructive: #f6465d;
+  --border: #1c2127;
+  --input: #242a31;
+  --ring: #2ebd85;
+  --chart-1: #2ebd85;
+  --chart-2: #f6465d;
+  --chart-3: #f0b90b;
+  --chart-4: #627eea;
+  --chart-5: #14f195;
+  --sidebar: #0d1014;
+  --sidebar-foreground: #eaecef;
+  --sidebar-primary: #2ebd85;
+  --sidebar-primary-foreground: #04130c;
+  --sidebar-accent: #1c2127;
+  --sidebar-accent-foreground: #eaecef;
+  --sidebar-border: #1c2127;
+  --sidebar-ring: #2ebd85;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'cv01', 'ss01';
+  }
+  html {
+    @apply font-sans;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2a313a;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a4350;
+  }
+
+  /* Selection */
+  ::selection {
+    background: rgba(46, 189, 133, 0.3);
+  }
+}
