@@ -4,6 +4,27 @@ pub mod routes;
 use actix_web::{App, HttpServer, web};
 use nexium_config::AppConfig;
 use routes::TimescalePool;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        routes::get_ohlcv,
+        routes::get_orderbook,
+        routes::get_trades,
+    ),
+    components(schemas(
+        routes::OhlcvResponse,
+        routes::OrderBookResponse,
+        routes::TradeResponse,
+        routes::ErrorResponse,
+    )),
+    tags(
+        (name = "Market Data", description = "OHLCV candles, orderbook snapshots, and trade history")
+    ),
+)]
+pub struct ApiDoc;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(routes::get_ohlcv)
@@ -27,6 +48,9 @@ pub async fn run() -> anyhow::Result<()> {
         App::new()
             .app_data(web::Data::new(pg_pool.clone()))
             .app_data(web::Data::new(TimescalePool(ts_pool.clone())))
+            .service(
+                SwaggerUi::new("/docs/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()),
+            )
             .configure(configure)
     })
     .bind((host.as_str(), port))?

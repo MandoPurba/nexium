@@ -17,17 +17,14 @@ use nexium_core::rate_limit::ip_rate_limiter;
 use nexium_matching_engine::{Engine, EngineCommand};
 use sqlx::PgPool;
 use tokio::sync::mpsc;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
-/// Channel capacity for engine commands. Generous so HTTP handlers never
-/// back-pressure on quick bursts.
 const ENGINE_CMD_BUF: usize = 1024;
 const ENGINE_EVT_BUF: usize = 1024;
 
-/// Handle used by HTTP handlers to submit commands to the matching engine.
 pub type EngineSender = mpsc::Sender<EngineCommand>;
 
-/// Spawn the matching engine, settlement, and snapshot tasks. Returns the
-/// command-sender half that HTTP handlers store in `app_data`.
 pub fn spawn_engine(
     pool: PgPool,
     ts_pool: Option<PgPool>,
@@ -47,10 +44,44 @@ pub fn spawn_engine(
     cmd_tx
 }
 
-/// Mount all order routes on `cfg`.
-///
-/// - `GET /pairs` is public (no auth required).
-/// - All order routes are protected by [`JwtAuth`].
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        routes::list_pairs,
+        routes::place_order,
+        routes::list_orders,
+        routes::get_order,
+        routes::cancel_order,
+    ),
+    components(schemas(
+        routes::PairResponse,
+        routes::PlaceOrderRequest,
+        routes::PlaceOrderResponse,
+        routes::OrderResponse,
+        routes::CancelOrderResponse,
+        routes::ErrorResponse,
+    )),
+    tags(
+        (name = "Trading", description = "Order placement, management, and trading pairs")
+    ),
+    modifiers(&SecurityAddon)
+)]
+pub struct ApiDoc;
+
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_with(Default::default);
+        components.add_security_scheme(
+            "bearer_auth",
+            utoipa::openapi::security::SecurityScheme::Http(utoipa::openapi::security::Http::new(
+                utoipa::openapi::security::HttpAuthScheme::Bearer,
+            )),
+        );
+    }
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(routes::list_pairs).service(
         web::scope("")
@@ -99,6 +130,9 @@ pub async fn run() -> anyhow::Result<()> {
             .app_data(web::Data::new(issuer.clone()))
             .app_data(web::Data::new(engine_tx.clone()))
             .service(metrics_handler)
+            .service(
+                SwaggerUi::new("/docs/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()),
+            )
             .configure(configure)
     })
     .bind((host.as_str(), port))?

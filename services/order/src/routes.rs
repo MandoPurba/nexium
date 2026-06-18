@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
@@ -21,25 +22,37 @@ use crate::repository::{self, OrderFilter, OrderRecord};
 // Shared response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PairResponse {
+    #[schema(example = "BTC/USDT")]
     pub symbol: String,
+    #[schema(example = "BTC")]
     pub base_currency: String,
+    #[schema(example = "USDT")]
     pub quote_currency: String,
+    #[schema(value_type = String, example = "0.000001")]
     pub min_qty: Decimal,
+    #[schema(value_type = String, example = "0.01")]
     pub tick_size: Decimal,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct OrderResponse {
     pub id: Uuid,
+    #[schema(example = "BTC/USDT")]
     pub pair: String,
+    #[schema(example = "buy")]
     pub side: String,
     #[serde(rename = "type")]
+    #[schema(example = "limit")]
     pub order_type: String,
+    #[schema(example = "open")]
     pub status: String,
+    #[schema(value_type = Option<String>, example = "65000")]
     pub price: Option<Decimal>,
+    #[schema(value_type = String, example = "0.01")]
     pub quantity: Decimal,
+    #[schema(value_type = String, example = "0")]
     pub filled_qty: Decimal,
     pub created_at: DateTime<Utc>,
 }
@@ -64,6 +77,14 @@ impl From<OrderRecord> for OrderResponse {
 // GET /pairs
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/pairs",
+    tag = "Trading",
+    responses(
+        (status = 200, description = "Available trading pairs", body = Vec<PairResponse>),
+    )
+)]
 #[get("/pairs")]
 #[tracing::instrument(name = "order.list_pairs", skip_all)]
 pub async fn list_pairs(pool: web::Data<PgPool>) -> Result<HttpResponse, ApiError> {
@@ -97,48 +118,73 @@ fn validate_positive(v: &Decimal) -> Result<(), ValidationError> {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum OrderSide {
     Buy,
     Sell,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum OrderType {
     Limit,
     Market,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct PlaceOrderRequest {
     #[validate(length(min = 3, max = 20))]
+    #[schema(example = "BTC/USDT")]
     pub pair: String,
+    #[schema(example = "buy")]
     pub side: OrderSide,
     #[serde(rename = "type")]
+    #[schema(example = "limit")]
     pub order_type: OrderType,
-    // Price validation (must be positive when provided) is checked in the handler
-    // body, alongside the limit-requires-price business rule.
+    #[schema(value_type = Option<String>, example = "65000")]
     pub price: Option<Decimal>,
     #[validate(custom(function = "validate_positive"))]
+    #[schema(value_type = String, example = "0.01")]
     pub quantity: Decimal,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PlaceOrderResponse {
     pub id: Uuid,
+    #[schema(example = "BTC/USDT")]
     pub pair: String,
+    #[schema(example = "buy")]
     pub side: String,
     #[serde(rename = "type")]
+    #[schema(example = "limit")]
     pub order_type: String,
+    #[schema(example = "open")]
     pub status: String,
+    #[schema(value_type = Option<String>, example = "65000")]
     pub price: Option<Decimal>,
+    #[schema(value_type = String, example = "0.01")]
     pub quantity: Decimal,
+    #[schema(value_type = String, example = "0")]
     pub filled_qty: Decimal,
     pub created_at: DateTime<Utc>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/orders",
+    tag = "Trading",
+    security(("bearer_auth" = [])),
+    request_body = PlaceOrderRequest,
+    responses(
+        (status = 201, description = "Order placed", body = PlaceOrderResponse),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 403, description = "Not eligible to trade", body = ErrorResponse),
+        (status = 404, description = "Pair not found", body = ErrorResponse),
+        (status = 422, description = "Insufficient balance or pair inactive", body = ErrorResponse),
+    )
+)]
 #[post("/orders")]
 #[tracing::instrument(name = "order.place", skip_all, fields(user_id = %user.id))]
 pub async fn place_order(
@@ -150,7 +196,6 @@ pub async fn place_order(
     let body = body.into_inner();
     body.validate()?;
 
-    // Limit orders require a positive price; market orders must omit it.
     let price_invalid = matches!(&body.order_type, OrderType::Limit)
         && !matches!(body.price, Some(p) if p > Decimal::ZERO);
     if price_invalid {
@@ -161,7 +206,6 @@ pub async fn place_order(
         }));
     }
 
-    // Role guard: active account + at least KYC basic.
     let eligible = repository::check_trading_eligible(pool.get_ref(), user.id)
         .await
         .map_err(|e| ApiError::Internal(e.into()))?;
@@ -192,13 +236,6 @@ pub async fn place_order(
         OrderType::Market => "market",
     };
 
-    // Lock balance before inserting the order so we don't create an open order
-    // without the backing funds.
-    //
-    // buy  limit  → lock price × quantity in quote currency (e.g. USDT)
-    // sell limit  → lock quantity in base currency (e.g. BTC)
-    // buy  market → price unknown; skip lock (matching engine settles funds)
-    // sell market → lock quantity in base currency
     let lock = match (&body.order_type, &body.side, body.price) {
         (OrderType::Limit, OrderSide::Buy, Some(price)) => {
             Some((pair.quote_currency.clone(), price * body.quantity))
@@ -206,7 +243,7 @@ pub async fn place_order(
         (OrderType::Limit, OrderSide::Sell, _) | (OrderType::Market, OrderSide::Sell, _) => {
             Some((pair.base_currency.clone(), body.quantity))
         }
-        _ => None, // market buy — no lock at placement
+        _ => None,
     };
 
     if let Some((currency, amount)) = &lock {
@@ -236,9 +273,6 @@ pub async fn place_order(
     .await
     .map_err(|e| ApiError::Internal(e.into()))?;
 
-    // Feed the matching engine. Errors here are operational (channel closed
-    // because the engine task died) — we return 500 since the order is in the
-    // DB but won't be matched.
     let engine_order = EngineOrder {
         id: order.id,
         user_id: order.user_id,
@@ -280,7 +314,7 @@ pub async fn place_order(
 // GET /orders
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListOrdersQuery {
     pub pair: Option<String>,
     pub status: Option<String>,
@@ -288,6 +322,22 @@ pub struct ListOrdersQuery {
     pub offset: Option<i64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/orders",
+    tag = "Trading",
+    security(("bearer_auth" = [])),
+    params(
+        ("pair" = Option<String>, Query, description = "Filter by pair symbol"),
+        ("status" = Option<String>, Query, description = "Filter by order status"),
+        ("limit" = Option<i64>, Query, description = "Max results (default 20, max 100)"),
+        ("offset" = Option<i64>, Query, description = "Pagination offset"),
+    ),
+    responses(
+        (status = 200, description = "List of orders", body = Vec<OrderResponse>),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+    )
+)]
 #[get("/orders")]
 #[tracing::instrument(name = "order.list", skip_all, fields(user_id = %user.id))]
 pub async fn list_orders(
@@ -314,6 +364,20 @@ pub async fn list_orders(
 // GET /orders/:id
 // ---------------------------------------------------------------------------
 
+#[utoipa::path(
+    get,
+    path = "/orders/{id}",
+    tag = "Trading",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = Uuid, Path, description = "Order ID")
+    ),
+    responses(
+        (status = 200, description = "Order details", body = OrderResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 404, description = "Order not found", body = ErrorResponse),
+    )
+)]
 #[get("/orders/{id}")]
 #[tracing::instrument(name = "order.get", skip_all, fields(user_id = %user.id, order_id = %path))]
 pub async fn get_order(
@@ -334,12 +398,27 @@ pub async fn get_order(
 // DELETE /orders/:id
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CancelOrderResponse {
     pub id: Uuid,
+    #[schema(example = "cancelled")]
     pub status: String,
 }
 
+#[utoipa::path(
+    delete,
+    path = "/orders/{id}",
+    tag = "Trading",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = Uuid, Path, description = "Order ID")
+    ),
+    responses(
+        (status = 200, description = "Order cancelled", body = CancelOrderResponse),
+        (status = 401, description = "Not authenticated", body = ErrorResponse),
+        (status = 404, description = "Order not found or not cancellable", body = ErrorResponse),
+    )
+)]
 #[delete("/orders/{id}")]
 #[tracing::instrument(name = "order.cancel", skip_all, fields(user_id = %user.id, order_id = %path))]
 pub async fn cancel_order(
@@ -359,8 +438,6 @@ pub async fn cancel_order(
             ))
         })?;
 
-    // Tell the engine to remove the resting order from its book. Errors are
-    // operational, not user-facing.
     let _ = engine
         .send(EngineCommand::CancelOrder {
             order_id: order.id,
@@ -368,8 +445,6 @@ pub async fn cancel_order(
         })
         .await;
 
-    // Unlock the balance that was locked when the order was placed.
-    // For partially_filled orders only the remaining (unfilled) portion was still locked.
     let remaining = order.quantity - order.filled_qty;
     let pair = repository::find_pair(pool.get_ref(), &order.pair)
         .await
@@ -379,7 +454,7 @@ pub async fn cancel_order(
         let unlock = match (order.side.as_str(), order.order_type.as_str(), order.price) {
             ("buy", "limit", Some(price)) => Some((pair.quote_currency, price * remaining)),
             ("sell", _, _) => Some((pair.base_currency, remaining)),
-            _ => None, // market buy had no lock at placement
+            _ => None,
         };
 
         if let Some((currency, amount)) = unlock {
@@ -395,4 +470,16 @@ pub async fn cancel_order(
         id: order.id,
         status: order.status,
     }))
+}
+
+// ---- Error response schema for OpenAPI ------------------------------------
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorResponse {
+    #[schema(example = "VALIDATION_ERROR")]
+    pub code: String,
+    #[schema(example = "request validation failed")]
+    pub message: String,
+    #[schema(nullable)]
+    pub details: Option<serde_json::Value>,
 }

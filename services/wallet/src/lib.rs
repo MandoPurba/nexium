@@ -10,10 +10,43 @@ use actix_web::{App, HttpServer, web};
 use nexium_config::AppConfig;
 use nexium_core::jwt::JwtIssuer;
 use nexium_core::middleware::JwtAuth;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
-/// Mount every wallet route on `cfg`. All routes are protected — the whole
-/// scope is wrapped with [`JwtAuth`], which pulls the [`JwtIssuer`] from
-/// `app_data`.
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        routes::list_wallets,
+        routes::get_wallet,
+        routes::deposit,
+    ),
+    components(schemas(
+        routes::WalletResponse,
+        routes::DepositRequest,
+        routes::DepositResponse,
+        routes::ErrorResponse,
+    )),
+    tags(
+        (name = "Wallet", description = "Balance management and deposits")
+    ),
+    modifiers(&SecurityAddon)
+)]
+pub struct ApiDoc;
+
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_with(Default::default);
+        components.add_security_scheme(
+            "bearer_auth",
+            utoipa::openapi::security::SecurityScheme::Http(utoipa::openapi::security::Http::new(
+                utoipa::openapi::security::HttpAuthScheme::Bearer,
+            )),
+        );
+    }
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("")
@@ -24,8 +57,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     );
 }
 
-/// Bootstrap the wallet-service process: load config, init telemetry, build
-/// the DB pool, construct the JWT issuer, and serve until shutdown.
 pub async fn run() -> anyhow::Result<()> {
     let cfg = AppConfig::load(env!("CARGO_PKG_NAME"))?;
     nexium_telemetry::init(&cfg.telemetry, cfg.environment)?;
@@ -47,6 +78,9 @@ pub async fn run() -> anyhow::Result<()> {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(issuer.clone()))
+            .service(
+                SwaggerUi::new("/docs/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()),
+            )
             .configure(configure)
     })
     .bind((host.as_str(), port))?
