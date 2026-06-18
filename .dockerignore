@@ -1,6 +1,13 @@
 target/
 .git/
 .env
-*.md
+.env.local
+.env.*.local
 docs/
 .github/
+node_modules/
+web/node_modules/
+web/.next/
+web/.env.local
+web/.env.*.local
+bun.lock

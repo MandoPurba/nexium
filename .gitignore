@@ -13,6 +13,14 @@ Cargo.lock.bak
 *.swp
 *.swo
 
+# Node / Bun
+node_modules/
+.next/
+
 # OS
 .DS_Store
 Thumbs.db
+
+
+
+
