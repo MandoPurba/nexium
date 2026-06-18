@@ -3,6 +3,7 @@
 use actix_web::{HttpResponse, get, post, web};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
@@ -204,5 +205,78 @@ pub async fn me(pool: web::Data<PgPool>, user: AuthUser) -> Result<HttpResponse,
         email: row.email,
         status: row.status,
         kyc_level: row.kyc_level,
+    }))
+}
+
+// ---- POST /auth/api-keys ---------------------------------------------------
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateApiKeyRequest {
+    pub permissions: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiKeyResponse {
+    pub id: Uuid,
+    pub key: String,
+    pub permissions: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+fn generate_api_key() -> String {
+    let random_bytes: [u8; 24] = rand::random();
+    format!("nex_live_{}", hex::encode(random_bytes))
+}
+
+fn hash_api_key(key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+#[post("/auth/api-keys")]
+#[tracing::instrument(name = "auth.create_api_key", skip_all, fields(user_id = %user.id))]
+pub async fn create_api_key(
+    pool: web::Data<PgPool>,
+    user: AuthUser,
+    body: web::Json<CreateApiKeyRequest>,
+) -> Result<HttpResponse, ApiError> {
+    let body = body.into_inner();
+
+    let valid_perms = ["read", "trade", "withdraw"];
+    for p in &body.permissions {
+        if !valid_perms.contains(&p.as_str()) {
+            return Err(ApiError::Validation(validator::ValidationErrors::new()));
+        }
+    }
+
+    let raw_key = generate_api_key();
+    let key_hash = hash_api_key(&raw_key);
+
+    let perms: Vec<&str> = body.permissions.iter().map(|s| s.as_str()).collect();
+
+    let id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO auth.api_keys (user_id, key_hash, permissions, expires_at)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        "#,
+    )
+    .bind(user.id)
+    .bind(&key_hash)
+    .bind(&perms)
+    .bind(body.expires_at)
+    .fetch_one(pool.get_ref())
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?;
+
+    tracing::info!(api_key_id = %id, "api key created");
+
+    Ok(HttpResponse::Created().json(ApiKeyResponse {
+        id,
+        key: raw_key,
+        permissions: body.permissions,
+        expires_at: body.expires_at,
     }))
 }

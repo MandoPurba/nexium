@@ -163,6 +163,9 @@ async fn settle_trade(pool: &PgPool, trade: &Trade) -> anyhow::Result<()> {
     // 3. Settle wallets.
     apply_trade_to_wallets(&mut tx, trade).await?;
 
+    // 4. Calculate and insert fees.
+    apply_fees(&mut tx, trade).await?;
+
     tx.commit().await.context("commit trade settlement")?;
 
     tracing::info!(
@@ -368,6 +371,119 @@ async fn load_order_for_settlement(
         order_type: row.1,
         price: row.2,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Fee calculation
+// ---------------------------------------------------------------------------
+
+async fn apply_fees(tx: &mut Transaction<'_, Postgres>, trade: &Trade) -> anyhow::Result<()> {
+    let tier: Option<(Decimal, Decimal)> =
+        sqlx::query_as("SELECT maker_rate, taker_rate FROM fee.fee_tiers WHERE level = 'standard'")
+            .fetch_optional(&mut **tx)
+            .await
+            .context("look up fee tier")?;
+
+    let (maker_rate, taker_rate) = match tier {
+        Some(t) => t,
+        None => return Ok(()),
+    };
+
+    let trade_value = trade.price * trade.quantity;
+
+    let (_, quote): (String, String) =
+        sqlx::query_as("SELECT base_currency, quote_currency FROM trading.pairs WHERE symbol = $1")
+            .bind(&trade.pair)
+            .fetch_one(&mut **tx)
+            .await
+            .context("look up pair for fees")?;
+
+    let maker_fee = maker_rate * trade_value;
+    let taker_fee = taker_rate * trade_value;
+
+    let maker_user: Uuid = sqlx::query_scalar("SELECT user_id FROM trading.orders WHERE id = $1")
+        .bind(trade.maker_order_id)
+        .fetch_one(&mut **tx)
+        .await
+        .context("look up maker user")?;
+
+    let taker_user: Uuid = sqlx::query_scalar("SELECT user_id FROM trading.orders WHERE id = $1")
+        .bind(trade.taker_order_id)
+        .fetch_one(&mut **tx)
+        .await
+        .context("look up taker user")?;
+
+    for (user_id, fee_amount, fee_rate, fee_type) in [
+        (maker_user, maker_fee, maker_rate, "maker"),
+        (taker_user, taker_fee, taker_rate, "taker"),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO fee.fees (user_id, trade_id, currency, amount, rate, type)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            "#,
+        )
+        .bind(user_id)
+        .bind(trade.id)
+        .bind(&quote)
+        .bind(fee_amount)
+        .bind(fee_rate)
+        .bind(fee_type)
+        .execute(&mut **tx)
+        .await
+        .context("insert fee record")?;
+
+        sqlx::query(
+            r#"
+            UPDATE wallet.wallets
+            SET balance = balance - $1, updated_at = NOW()
+            WHERE user_id = $2 AND currency = $3
+            "#,
+        )
+        .bind(fee_amount)
+        .bind(user_id)
+        .bind(&quote)
+        .execute(&mut **tx)
+        .await
+        .context("deduct fee from wallet")?;
+
+        record_wallet_txn_fee(tx, user_id, &quote, fee_amount, trade.id).await?;
+    }
+
+    tracing::debug!(
+        trade_id = %trade.id,
+        maker_fee = %maker_fee,
+        taker_fee = %taker_fee,
+        "fees applied"
+    );
+
+    Ok(())
+}
+
+async fn record_wallet_txn_fee(
+    tx: &mut Transaction<'_, Postgres>,
+    user_id: Uuid,
+    currency: &str,
+    amount: Decimal,
+    trade_id: Uuid,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO wallet.wallet_txns
+            (wallet_id, type, amount, status, ref_id)
+        SELECT id, 'fee'::wallet.txn_type, $2, 'confirmed'::wallet.txn_status, $3
+        FROM wallet.wallets
+        WHERE user_id = $1 AND currency = $4
+        "#,
+    )
+    .bind(user_id)
+    .bind(amount)
+    .bind(trade_id)
+    .bind(currency)
+    .execute(&mut **tx)
+    .await
+    .context("insert fee wallet_txn")?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

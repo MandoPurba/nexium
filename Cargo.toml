@@ -66,6 +66,22 @@ async-nats = "0.49.1"
 # Futures
 futures-util = "0.3.32"
 
+# Rate limiting
+actix-governor = "0.8"
+
+# OpenTelemetry
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = "0.27"
+tracing-opentelemetry = "0.28"
+
+# Metrics
+prometheus = "0.13"
+
+# Crypto (for API key hashing)
+sha2 = "0.10"
+hex = "0.4"
+
 # Database
 sqlx = { version = "0.9.0", features = [
     "postgres",
